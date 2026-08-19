@@ -1,0 +1,98 @@
+{
+  "project_info": {
+    "project_number": "361116656518",
+    "project_id": "dina95",
+    "storage_bucket": "dina95.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:361116656518:android:36b2678639b8b8d76dc207",
+        "android_client_info": {
+          "package_name": "com.example.dinaflutter"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "361116656518-ju6g7gc6jnja0rpr2r3bmi90e9gm0fh5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.dinaflutter",
+            "certificate_hash": "23833ff088d9dffa27f6e758aad1fa91208f88bf"
+          }
+        },
+        {
+          "client_id": "361116656518-clshbo5sgoquh1ijddgo89f5kutoc9dq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKwASmHT4WwvAaQRWJBo6vLD9_ZNbJbMw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "361116656518-clshbo5sgoquh1ijddgo89f5kutoc9dq.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "361116656518-bhol1t9munjvcfgb0pgi83php9prco71.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.dinaflutter"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:361116656518:android:d8650278589b49436dc207",
+        "android_client_info": {
+          "package_name": "com.szabolcs.berta.dina95"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "361116656518-lop5tk7087nqq3b4hacrolsop4hs9e81.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.szabolcs.berta.dina95",
+            "certificate_hash": "23833ff088d9dffa27f6e758aad1fa91208f88bf"
+          }
+        },
+        {
+          "client_id": "361116656518-clshbo5sgoquh1ijddgo89f5kutoc9dq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKwASmHT4WwvAaQRWJBo6vLD9_ZNbJbMw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "361116656518-clshbo5sgoquh1ijddgo89f5kutoc9dq.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "361116656518-bhol1t9munjvcfgb0pgi83php9prco71.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.dinaflutter"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
