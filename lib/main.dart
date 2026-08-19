@@ -1281,8 +1281,7 @@ class _StatCard
    NAPI ÁTTEKINTÉS
    ============================================================ */
 
-class _DailyOverview
-    extends StatelessWidget {
+class _DailyOverview extends StatelessWidget {
   final DateTime selectedDate;
 
   const _DailyOverview({
@@ -1301,10 +1300,12 @@ class _DailyOverview
         "${selectedDate.day.toString().padLeft(2, '0')}.";
   }
 
-  int _timeToMinutes(
-      String time) {
-    final parts =
-    time.split(":");
+  // ------------------------------------------------------------
+  // IDŐ ÁTVÁLTÁSA PERCRE
+  // ------------------------------------------------------------
+
+  int _timeToMinutes(String time) {
+    final parts = time.split(":");
 
     if (parts.length != 2) {
       return 0;
@@ -1318,6 +1319,10 @@ class _DailyOverview
 
     return hour * 60 + minute;
   }
+
+  // ------------------------------------------------------------
+  // LEDOLGOZOTT IDŐ KISZÁMÍTÁSA
+  // ------------------------------------------------------------
 
   String _calculateWorkedTime(
       String checkIn,
@@ -1346,26 +1351,58 @@ class _DailyOverview
         "${minutes.toString().padLeft(2, '0')} perc";
   }
 
+  // ------------------------------------------------------------
+  // TÚLÓRA KISZÁMÍTÁSA
+  // ------------------------------------------------------------
+
+  String _calculateOvertime(
+      String overtimeStart,
+      String overtimeEnd,
+      ) {
+    final start =
+    _timeToMinutes(overtimeStart);
+
+    var end =
+    _timeToMinutes(overtimeEnd);
+
+    if (end < start) {
+      end += 24 * 60;
+    }
+
+    final difference =
+        end - start;
+
+    final hours =
+        difference ~/ 60;
+
+    final minutes =
+        difference % 60;
+
+    if (minutes == 0) {
+      return "$overtimeStart - $overtimeEnd "
+          "($hours óra)";
+    }
+
+    return "$overtimeStart - $overtimeEnd "
+        "($hours óra "
+        "${minutes.toString().padLeft(2, '0')} perc)";
+  }
+
   @override
   Widget build(BuildContext context) {
     final user =
-        FirebaseAuth.instance
-            .currentUser;
+        FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       return _SectionCard(
         title: "NAPI ÁTTEKINTÉS",
-        subtitle:
-        formattedDate,
-
+        subtitle: formattedDate,
         child: const Center(
           child: Text(
             "Nincs bejelentkezett felhasználó.",
-
             style: TextStyle(
               fontSize: 9,
-              color:
-              Color(0xFF8A9098),
+              color: Color(0xFF8A9098),
             ),
           ),
         ),
@@ -1381,33 +1418,36 @@ class _DailyOverview
 
     return _SectionCard(
       title: "NAPI ÁTTEKINTÉS",
-      subtitle:
-      formattedDate,
+      subtitle: formattedDate,
 
       child: FutureBuilder<
           DocumentSnapshot<
               Map<String, dynamic>>>(
         future: checkinRef.get(),
 
-        builder:
-            (context, snapshot) {
-          if (snapshot
-              .connectionState ==
-              ConnectionState
-                  .waiting) {
+        builder: (context, snapshot) {
+
+          // --------------------------------------------------
+          // BETÖLTÉS
+          // --------------------------------------------------
+
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
             return const SizedBox(
               height: 120,
 
               child: Center(
-                child:
-                CircularProgressIndicator(
+                child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color:
-                  Color(0xFF1976E8),
+                  color: Color(0xFF1976E8),
                 ),
               ),
             );
           }
+
+          // --------------------------------------------------
+          // HIBA
+          // --------------------------------------------------
 
           if (snapshot.hasError) {
             return const SizedBox(
@@ -1416,9 +1456,7 @@ class _DailyOverview
               child: Center(
                 child: Text(
                   "Nem sikerült betölteni az adatokat.",
-
-                  textAlign:
-                  TextAlign.center,
+                  textAlign: TextAlign.center,
 
                   style: TextStyle(
                     fontSize: 9,
@@ -1429,6 +1467,10 @@ class _DailyOverview
             );
           }
 
+          // --------------------------------------------------
+          // NINCS ADAT
+          // --------------------------------------------------
+
           if (!snapshot.hasData ||
               !snapshot.data!.exists) {
             return const SizedBox(
@@ -1437,15 +1479,13 @@ class _DailyOverview
               child: Center(
                 child: Column(
                   mainAxisAlignment:
-                  MainAxisAlignment
-                      .center,
+                  MainAxisAlignment.center,
 
                   children: [
                     Icon(
                       Icons.event_busy,
                       size: 30,
-                      color:
-                      Color(0xFF9AA0A7),
+                      color: Color(0xFF9AA0A7),
                     ),
 
                     SizedBox(height: 8),
@@ -1455,8 +1495,7 @@ class _DailyOverview
 
                       style: TextStyle(
                         fontSize: 9,
-                        color:
-                        Color(0xFF8A9098),
+                        color: Color(0xFF8A9098),
                       ),
                     ),
                   ],
@@ -1465,9 +1504,12 @@ class _DailyOverview
             );
           }
 
+          // --------------------------------------------------
+          // FIRESTORE ADATOK
+          // --------------------------------------------------
+
           final data =
-              snapshot.data!.data() ??
-                  {};
+              snapshot.data!.data() ?? {};
 
           final project =
               data["project"]
@@ -1490,28 +1532,26 @@ class _DailyOverview
             return Column(
               children: [
                 _InfoRow(
-                  icon:
-                  Icons.beach_access,
+                  icon: Icons.beach_access,
+
                   iconColor:
-                  const Color(
-                    0xFF8151D8,
-                  ),
-                  title:
-                  "Állapot",
-                  value:
-                  "Szabadság",
+                  const Color(0xFF8151D8),
+
+                  title: "Állapot",
+
+                  value: "Szabadság",
                 ),
 
                 const SizedBox(
-                    height: 10),
+                  height: 10,
+                ),
 
                 const Text(
                   "Ezen a napon szabadságon voltál.",
 
                   style: TextStyle(
                     fontSize: 9,
-                    color:
-                    Color(0xFF8A9098),
+                    color: Color(0xFF8A9098),
                   ),
                 ),
               ],
@@ -1534,57 +1574,119 @@ class _DailyOverview
                 );
           }
 
+          // --------------------------------------------------
+          // TÚLÓRA
+          // --------------------------------------------------
+
+          String overtimeText =
+              "Nincs";
+
+          if (data["overtimeDecision"] == true) {
+
+            final overtimeStart =
+            data["overtimeStart"]
+                ?.toString();
+
+            final overtimeEnd =
+            data["overtimeEnd"]
+                ?.toString();
+
+            if (overtimeStart != null &&
+                overtimeEnd != null &&
+                overtimeStart.isNotEmpty &&
+                overtimeEnd.isNotEmpty) {
+
+              overtimeText =
+                  _calculateOvertime(
+                    overtimeStart,
+                    overtimeEnd,
+                  );
+            }
+          }
+
+          // --------------------------------------------------
+          // NAPI ADATOK
+          // --------------------------------------------------
+
           return Column(
             children: [
+
+              // ------------------------------------------------
+              // LEDOLGOZOTT ÓRÁK
+              // ------------------------------------------------
+
               _InfoRow(
-                icon:
-                Icons.access_time,
+                icon: Icons.access_time,
+
                 iconColor:
-                const Color(
-                  0xFF1676E8,
-                ),
-                title:
-                "Ledolgozott órák",
-                value:
-                workedTime,
+                const Color(0xFF1676E8),
+
+                title: "Ledolgozott órák",
+
+                value: workedTime,
               ),
+
+              // ------------------------------------------------
+              // BECSSEKKOLÁS
+              // ------------------------------------------------
 
               _InfoRow(
                 icon: Icons.login,
+
                 iconColor:
-                const Color(
-                  0xFF22B573,
-                ),
-                title:
-                "Becsekkolás",
-                value:
-                checkIn ?? "-",
+                const Color(0xFF22B573),
+
+                title: "Becsekkolás",
+
+                value: checkIn ?? "-",
               ),
+
+              // ------------------------------------------------
+              // KICSEKKOLÁS
+              // ------------------------------------------------
 
               _InfoRow(
                 icon: Icons.logout,
+
                 iconColor:
-                const Color(
-                  0xFFF09A19,
-                ),
-                title:
-                "Kicsekkolás",
+                const Color(0xFFF09A19),
+
+                title: "Kicsekkolás",
+
                 value:
                 checkOut ??
                     "Még dolgozik",
               ),
 
+              // ------------------------------------------------
+              // TÚLÓRA
+              // ------------------------------------------------
+
+              _InfoRow(
+                icon: Icons.more_time,
+
+                iconColor:
+                const Color(0xFFE85D04),
+
+                title: "Túlóra",
+
+                value: overtimeText,
+              ),
+
+              // ------------------------------------------------
+              // PROJEKT
+              // ------------------------------------------------
+
               _InfoRow(
                 icon:
                 Icons.business_outlined,
+
                 iconColor:
-                const Color(
-                  0xFF8151D8,
-                ),
-                title:
-                "Projekt",
-                value:
-                project.isNotEmpty
+                const Color(0xFF8151D8),
+
+                title: "Projekt",
+
+                value: project.isNotEmpty
                     ? project
                     : "-",
               ),
@@ -2116,8 +2218,7 @@ class _CalendarCardState
    DOLGOZÓK
    ============================================================ */
 
-class _EmployeesCard
-    extends StatelessWidget {
+class _EmployeesCard extends StatelessWidget {
   final DateTime selectedDate;
 
   const _EmployeesCard({
@@ -2136,36 +2237,43 @@ class _EmployeesCard
         "${selectedDate.day.toString().padLeft(2, '0')}.";
   }
 
+  /* ============================================================
+     ÖSSZES DOLGOZÓ MEGNYITÁSA
+     ============================================================ */
+
+  void openAllEmployees(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) {
+          return _AllEmployeesPage(
+            selectedDate: selectedDate,
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
-      title:
-      "DOLGOZÓK JELENLÉTE",
-
-      subtitle:
-      formattedDate,
+      title: "DOLGOZÓK JELENLÉTE",
+      subtitle: formattedDate,
 
       child: StreamBuilder<
-          QuerySnapshot<
-              Map<String, dynamic>>>(
+          QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection("users")
             .snapshots(),
 
-        builder:
-            (context, snapshot) {
-
+        builder: (context, snapshot) {
           if (snapshot.connectionState ==
               ConnectionState.waiting) {
             return const SizedBox(
               height: 180,
-
               child: Center(
-                child:
-                CircularProgressIndicator(
+                child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color:
-                  Color(0xFF1976E8),
+                  color: Color(0xFF1976E8),
                 ),
               ),
             );
@@ -2173,18 +2281,14 @@ class _EmployeesCard
 
           if (snapshot.hasError) {
             return Padding(
-              padding:
-              const EdgeInsets
-                  .symmetric(
+              padding: const EdgeInsets.symmetric(
                 vertical: 20,
               ),
-
               child: Text(
                 "Nem sikerült betölteni a dolgozókat:\n"
                     "${snapshot.error}",
 
-                style:
-                const TextStyle(
+                style: const TextStyle(
                   fontSize: 9,
                   color: Colors.red,
                 ),
@@ -2193,91 +2297,77 @@ class _EmployeesCard
           }
 
           final employees =
-              snapshot.data?.docs ??
-                  [];
+              snapshot.data?.docs ?? [];
 
           if (employees.isEmpty) {
             return const Padding(
-              padding:
-              EdgeInsets.symmetric(
+              padding: EdgeInsets.symmetric(
                 vertical: 20,
               ),
-
               child: Center(
                 child: Text(
                   "Nincs dolgozó az adatbázisban.",
 
-                  style:
-                  TextStyle(
+                  style: TextStyle(
                     fontSize: 9,
-                    color:
-                    Color(0xFF8A9098),
+                    color: Color(0xFF8A9098),
                   ),
                 ),
               ),
             );
           }
 
+          /* ----------------------------------------------------
+             A FŐOLDALON CSAK 5 DOLGOZÓ
+             ---------------------------------------------------- */
+
           final visibleEmployees =
-          employees
-              .take(5)
-              .toList();
+          employees.take(5).toList();
 
           return Column(
             children: [
               ...visibleEmployees.map(
                     (employee) {
                   return _FirestoreEmployeeRow(
-                    employeeId:
-                    employee.id,
-
-                    employeeData:
-                    employee.data(),
-
-                    selectedDate:
-                    selectedDateString,
+                    employeeId: employee.id,
+                    employeeData: employee.data(),
+                    selectedDate: selectedDateString,
                   );
                 },
               ),
 
-              const SizedBox(
-                  height: 3),
+              const SizedBox(height: 3),
+
+              /* ------------------------------------------------
+                 ÖSSZES DOLGOZÓ GOMB
+                 ------------------------------------------------ */
 
               TextButton(
-                onPressed: () {},
+                onPressed: () {
+                  openAllEmployees(context);
+                },
 
-                style:
-                TextButton.styleFrom(
-                  padding:
-                  EdgeInsets.zero,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
 
-                  minimumSize:
-                  const Size(
+                  minimumSize: const Size(
                     double.infinity,
                     28,
                   ),
                 ),
 
-                child:
-                const Row(
+                child: const Row(
                   mainAxisAlignment:
-                  MainAxisAlignment
-                      .center,
+                  MainAxisAlignment.center,
 
                   children: [
                     Text(
                       "ÖSSZES DOLGOZÓ MEGTEKINTÉSE",
 
-                      style:
-                      TextStyle(
-                        color:
-                        Color(
-                          0xFF1976E8,
-                        ),
+                      style: TextStyle(
+                        color: Color(0xFF1976E8),
                         fontSize: 7.5,
-                        fontWeight:
-                        FontWeight
-                            .bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
 
@@ -2285,10 +2375,7 @@ class _EmployeesCard
 
                     Icon(
                       Icons.arrow_forward,
-                      color:
-                      Color(
-                        0xFF1976E8,
-                      ),
+                      color: Color(0xFF1976E8),
                       size: 14,
                     ),
                   ],
@@ -2301,6 +2388,263 @@ class _EmployeesCard
     );
   }
 }
+
+
+/* ============================================================
+   ÖSSZES DOLGOZÓ OLDAL
+   ============================================================ */
+
+class _AllEmployeesPage extends StatelessWidget {
+  final DateTime selectedDate;
+
+  const _AllEmployeesPage({
+    required this.selectedDate,
+  });
+
+  String get selectedDateString {
+    return "${selectedDate.year.toString().padLeft(4, '0')}-"
+        "${selectedDate.month.toString().padLeft(2, '0')}-"
+        "${selectedDate.day.toString().padLeft(2, '0')}";
+  }
+
+  String get formattedDate {
+    return "${selectedDate.year}. "
+        "${selectedDate.month.toString().padLeft(2, '0')}. "
+        "${selectedDate.day.toString().padLeft(2, '0')}.";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+
+      /* ======================================================
+         FEJLÉC
+         ====================================================== */
+
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF101E2E),
+
+        foregroundColor: Colors.white,
+
+        elevation: 0,
+
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Colors.white,
+          ),
+
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
+
+        title: const Text(
+          "ÖSSZES DOLGOZÓ",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+
+        centerTitle: true,
+      ),
+
+      body: SafeArea(
+        child: StreamBuilder<
+            QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection("users")
+              .snapshots(),
+
+          builder: (context, snapshot) {
+            /* ------------------------------------------------
+               BETÖLTÉS
+               ------------------------------------------------ */
+
+            if (snapshot.connectionState ==
+                ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF1976E8),
+                ),
+              );
+            }
+
+            /* ------------------------------------------------
+               HIBA
+               ------------------------------------------------ */
+
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+
+                  child: Text(
+                    "Nem sikerült betölteni a dolgozókat:\n\n"
+                        "${snapshot.error}",
+
+                    textAlign: TextAlign.center,
+
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.red,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            /* ------------------------------------------------
+               DOLGOZÓK
+               ------------------------------------------------ */
+
+            final employees =
+                snapshot.data?.docs ?? [];
+
+            if (employees.isEmpty) {
+              return const Center(
+                child: Text(
+                  "Nincs dolgozó az adatbázisban.",
+
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF8A9098),
+                  ),
+                ),
+              );
+            }
+
+            return Column(
+              children: [
+                /* ============================================
+                   DÁTUM
+                   ============================================ */
+
+                Container(
+                  width: double.infinity,
+
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+
+                  color: Colors.white,
+
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_today,
+                        size: 15,
+                        color: Color(0xFF1976E8),
+                      ),
+
+                      const SizedBox(width: 8),
+
+                      Text(
+                        "Jelenlét: $formattedDate",
+
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF343A40),
+                        ),
+                      ),
+
+                      const Spacer(),
+
+                      Text(
+                        "${employees.length} fő",
+
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1976E8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                /* ============================================
+                   ELVÁLASZTÓ
+                   ============================================ */
+
+                Container(
+                  height: 1,
+                  color: const Color(0xFFE5E9ED),
+                ),
+
+                /* ============================================
+                   ÖSSZES DOLGOZÓ LISTÁJA
+                   ============================================ */
+
+                Expanded(
+                  child: ListView.builder(
+                    physics:
+                    const BouncingScrollPhysics(),
+
+                    padding: const EdgeInsets.fromLTRB(
+                      16,
+                      12,
+                      16,
+                      24,
+                    ),
+
+                    itemCount: employees.length,
+
+                    itemBuilder: (context, index) {
+                      final employee =
+                      employees[index];
+
+                      return Container(
+                        margin: const EdgeInsets.only(
+                          bottom: 6,
+                        ),
+
+                        padding:
+                        const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+
+                          borderRadius:
+                          BorderRadius.circular(8),
+
+                          border: Border.all(
+                            color:
+                            const Color(0xFFE8ECF0),
+                          ),
+                        ),
+
+                        child: _FirestoreEmployeeRow(
+                          employeeId: employee.id,
+
+                          employeeData:
+                          employee.data(),
+
+                          selectedDate:
+                          selectedDateString,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 
 /* ============================================================
    FIRESTORE DOLGOZÓ SOR
@@ -2329,28 +2673,23 @@ class _FirestoreEmployeeRow
         .trim()
         .isNotEmpty ==
         true
-        ? employeeData["name"]
-        .toString()
+        ? employeeData["name"].toString()
         : "Ismeretlen dolgozó";
 
     final String? photoUrl =
-    employeeData["photoURL"]
-        ?.toString();
+    employeeData["photoURL"]?.toString();
 
     return FutureBuilder<
         DocumentSnapshot<
             Map<String, dynamic>>>(
-      future: FirebaseFirestore
-          .instance
+      future: FirebaseFirestore.instance
           .collection("users")
           .doc(employeeId)
           .collection("checkins")
           .doc(selectedDate)
           .get(),
 
-      builder:
-          (context, snapshot) {
-
+      builder: (context, snapshot) {
         String role =
             "Nincs becsekkolva";
 
@@ -2363,9 +2702,9 @@ class _FirestoreEmployeeRow
         IconData icon =
             Icons.person;
 
-        // --------------------------------------------------
-        // BETÖLTÉS
-        // --------------------------------------------------
+        /* ====================================================
+           BETÖLTÉS
+           ==================================================== */
 
         if (snapshot.connectionState ==
             ConnectionState.waiting) {
@@ -2379,37 +2718,34 @@ class _FirestoreEmployeeRow
               Icons.person;
         }
 
-        // --------------------------------------------------
-        // VAN JELENLÉTI ADAT
-        // --------------------------------------------------
+        /* ====================================================
+           VAN JELENLÉTI ADAT
+           ==================================================== */
 
         if (snapshot.hasData &&
             snapshot.data!.exists) {
-
           final data =
           snapshot.data!.data();
 
           final String? project =
-          data?["project"]
-              ?.toString();
+          data?["project"]?.toString();
 
           final String? checkInTime =
-          data?["checkInTime"]
-              ?.toString();
+          data?["checkInTime"]?.toString();
 
           final String? checkOutTime =
-          data?["checkOutTime"]
-              ?.toString();
+          data?["checkOutTime"]?.toString();
 
-          // ------------------------------------------------
-          // SZABADSÁG
-          // ------------------------------------------------
+          /* ==================================================
+             SZABADSÁG
+             ================================================== */
 
           if (project == "Szabi") {
             role =
             "Szabadságon";
 
-            time = "Szabi";
+            time =
+            "Szabi";
 
             color =
             const Color(0xFF8051D8);
@@ -2418,14 +2754,13 @@ class _FirestoreEmployeeRow
                 Icons.beach_access;
           }
 
-          // ------------------------------------------------
-          // JELENLEG DOLGOZIK
-          // ------------------------------------------------
+          /* ==================================================
+             JELENLEG DOLGOZIK
+             ================================================== */
 
           else if (
           checkInTime != null &&
               checkOutTime == null) {
-
             role =
             project != null &&
                 project.isNotEmpty
@@ -2442,14 +2777,13 @@ class _FirestoreEmployeeRow
                 Icons.engineering;
           }
 
-          // ------------------------------------------------
-          // KICSEKKOLT
-          // ------------------------------------------------
+          /* ==================================================
+             KICSEKKOLT
+             ================================================== */
 
           else if (
           checkInTime != null &&
               checkOutTime != null) {
-
             role =
             project != null &&
                 project.isNotEmpty
@@ -2480,6 +2814,7 @@ class _FirestoreEmployeeRow
   }
 }
 
+
 /* ============================================================
    FIRESTORE DOLGOZÓ UI
    ============================================================ */
@@ -2487,10 +2822,15 @@ class _FirestoreEmployeeRow
 class _EmployeeRowFromFirestore
     extends StatelessWidget {
   final String name;
+
   final String role;
+
   final String time;
+
   final Color color;
+
   final IconData icon;
+
   final String? photoUrl;
 
   const _EmployeeRowFromFirestore({
@@ -2511,30 +2851,29 @@ class _EmployeeRowFromFirestore
       const BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color:
-            Color(0xFFECEFF2),
+            color: Color(0xFFECEFF2),
           ),
         ),
       ),
 
       child: Row(
         children: [
+          /* ==================================================
+             PROFILKÉP / IKON
+             ================================================== */
+
           Container(
             width: 29,
             height: 29,
 
             decoration:
             BoxDecoration(
-              shape:
-              BoxShape.circle,
+              shape: BoxShape.circle,
 
               color:
-              const Color(
-                0xFFDCE4EC,
-              ),
+              const Color(0xFFDCE4EC),
 
-              border:
-              Border.all(
+              border: Border.all(
                 color: Colors.white,
                 width: 2,
               ),
@@ -2544,13 +2883,13 @@ class _EmployeeRowFromFirestore
             photoUrl != null &&
                 photoUrl!.isNotEmpty
                 ? ClipOval(
-              child:
-              Image.network(
+              child: Image.network(
                 photoUrl!,
+
                 width: 29,
                 height: 29,
-                fit:
-                BoxFit.cover,
+
+                fit: BoxFit.cover,
 
                 errorBuilder:
                     (
@@ -2581,15 +2920,17 @@ class _EmployeeRowFromFirestore
 
           const SizedBox(width: 7),
 
+          /* ==================================================
+             NÉV + ÁLLAPOT
+             ================================================== */
+
           Expanded(
             child: Column(
               mainAxisAlignment:
-              MainAxisAlignment
-                  .center,
+              MainAxisAlignment.center,
 
               crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
+              CrossAxisAlignment.start,
 
               children: [
                 Row(
@@ -2602,8 +2943,7 @@ class _EmployeeRowFromFirestore
                       BoxDecoration(
                         color: color,
                         shape:
-                        BoxShape
-                            .circle,
+                        BoxShape.circle,
                       ),
                     ),
 
@@ -2621,9 +2961,10 @@ class _EmployeeRowFromFirestore
                         style:
                         const TextStyle(
                           fontSize: 8.5,
+
                           fontWeight:
-                          FontWeight
-                              .w700,
+                          FontWeight.w700,
+
                           color:
                           Color(
                             0xFF343A40,
@@ -2643,12 +2984,12 @@ class _EmployeeRowFromFirestore
                   maxLines: 1,
 
                   overflow:
-                  TextOverflow
-                      .ellipsis,
+                  TextOverflow.ellipsis,
 
                   style:
                   const TextStyle(
                     fontSize: 6.5,
+
                     color:
                     Color(
                       0xFF8B929A,
@@ -2659,13 +3000,19 @@ class _EmployeeRowFromFirestore
             ),
           ),
 
+          /* ==================================================
+             IDŐ
+             ================================================== */
+
           if (time.isNotEmpty)
             Text(
               time,
 
               style: TextStyle(
                 fontSize: 7.5,
+
                 color: color,
+
                 fontWeight:
                 FontWeight.w600,
               ),
@@ -2673,7 +3020,9 @@ class _EmployeeRowFromFirestore
 
           const Icon(
             Icons.chevron_right,
+
             size: 14,
+
             color:
             Color(0xFFA4AAB1),
           ),
@@ -3603,9 +3952,9 @@ class _AttendancePageState
         "${now.minute.toString().padLeft(2, '0')}";
   }
 
-  // ============================================================
-  // 16:00 ELLENŐRZÉSE
-  // ============================================================
+  /// ============================================================
+// TÚLÓRA IDŐ ELLENŐRZÉSE
+// ============================================================
 
   Future<void> checkOvertimeTime() async {
     if (!mounted) return;
@@ -3614,26 +3963,59 @@ class _AttendancePageState
 
     if (!isCheckedIn) return;
 
-    if (overtimePromptShown) return;
+    if (overtimeDecision) return;
 
     final now = DateTime.now();
 
-    // 16:00 előtt nincs túlóra kérdés.
-    if (now.hour < 16) {
+    final currentMinutes =
+        now.hour * 60 + now.minute;
+
+    // ----------------------------------------------------------
+    // 15:45 ELŐTT NINCS KÉRDÉS
+    // ----------------------------------------------------------
+
+    const overtimeQuestionTime =
+        15 * 60 + 45; // 15:45
+
+    // ----------------------------------------------------------
+    // 16:00
+    // ----------------------------------------------------------
+
+    const overtimeDeadline =
+        16 * 60; // 16:00
+
+    // ----------------------------------------------------------
+    // 15:45 ÉS 16:00 KÖZÖTT
+    // ----------------------------------------------------------
+
+    if (currentMinutes >= overtimeQuestionTime &&
+        currentMinutes < overtimeDeadline) {
+
+      if (!overtimePromptShown) {
+        await askOvertime();
+      }
+
       return;
     }
 
-    // Már van eldöntött túlóra.
-    if (overtimeDecision) {
-      return;
-    }
+    // ----------------------------------------------------------
+    // 16:00 UTÁN
+    //
+    // Ha még nem döntött, automatikusan lezárjuk.
+    // ----------------------------------------------------------
 
-    await askOvertime();
+    if (currentMinutes >= overtimeDeadline) {
+
+      // Ha már lezártuk, nincs további teendő.
+      if (isCheckedOut) return;
+
+      await finishNormalWorkday();
+    }
   }
 
   // ============================================================
-  // TÚLÓRA KÉRDÉS
-  // ============================================================
+// TÚLÓRA KÉRDÉS
+// ============================================================
 
   Future<void> askOvertime() async {
     if (!mounted) return;
@@ -3644,11 +4026,42 @@ class _AttendancePageState
 
     if (overtimePromptShown) return;
 
-    // Azonnal true, hogy ne jelenjen meg többször
-    // párhuzamosan.
+    // ----------------------------------------------------------
+    // Kérdés már megjelent
+    // ----------------------------------------------------------
+
     setState(() {
       overtimePromptShown = true;
     });
+
+    bool decisionMade = false;
+
+    // ----------------------------------------------------------
+    // 15 perc után automatikus lezárás
+    // ----------------------------------------------------------
+
+    final autoCloseTimer = Timer(
+      const Duration(minutes: 15),
+          () async {
+        if (!mounted) return;
+
+        if (decisionMade) return;
+
+        decisionMade = true;
+
+        // Bezárjuk a túlóra ablakot.
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop(false);
+        }
+
+        // Automatikusan lezárjuk a munkanapot.
+        await finishNormalWorkday();
+      },
+    );
+
+    // ----------------------------------------------------------
+    // DIALÓGUS
+    // ----------------------------------------------------------
 
     final result = await showDialog<bool>(
       context: context,
@@ -3658,23 +4071,47 @@ class _AttendancePageState
           title: const Text(
             "Túlóra",
           ),
+
           content: const Text(
             "Szeretnél ma túlórázni?\n\n"
-                "16:00-tól kezdődik a túlóra.",
+                "15:45-től 16:00-ig van időd eldönteni.\n\n"
+                "Ha 16:00-ig nem választasz, "
+                "a munkanap automatikusan lezárul.",
           ),
+
           actions: [
+
+            // --------------------------------------------------
+            // NEM
+            // --------------------------------------------------
+
             TextButton(
               onPressed: () {
+                if (decisionMade) return;
+
+                decisionMade = true;
+
                 Navigator.of(context).pop(false);
               },
+
               child: const Text(
                 "Nem, kicsekkolok",
               ),
             ),
+
+            // --------------------------------------------------
+            // IGEN
+            // --------------------------------------------------
+
             ElevatedButton(
               onPressed: () {
+                if (decisionMade) return;
+
+                decisionMade = true;
+
                 Navigator.of(context).pop(true);
               },
+
               child: const Text(
                 "Igen, túlórázom",
               ),
@@ -3684,12 +4121,30 @@ class _AttendancePageState
       },
     );
 
+    // ----------------------------------------------------------
+    // TIMER LEÁLLÍTÁSA
+    // ----------------------------------------------------------
+
+    autoCloseTimer.cancel();
+
     if (!mounted) return;
 
+    // ----------------------------------------------------------
+    // DÖNTÉS
+    // ----------------------------------------------------------
+
     if (result == true) {
+
       await startOvertime();
-    } else {
-      await finishNormalWorkday();
+
+    } else if (result == false) {
+
+      // Csak akkor zárjuk le,
+      // ha nem az automatikus 16:00 lezárás történt.
+
+      if (!isCheckedOut) {
+        await finishNormalWorkday();
+      }
     }
   }
 
