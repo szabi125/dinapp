@@ -56,25 +56,23 @@ class DefaultFirebaseOptions {
     projectId: 'dina95',
     storageBucket: 'dina95.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyAYnM8ROa9KHj9jGkdquH-I1pr0IXMyVDM',
     appId: '1:361116656518:ios:a38e31a666d830636dc207',
     messagingSenderId: '361116656518',
     projectId: 'dina95',
     storageBucket: 'dina95.firebasestorage.app',
-    androidClientId: '361116656518-lop5tk7087nqq3b4hacrolsop4hs9e81.apps.googleusercontent.com',
+    androidClientId: '361116656518-ju6g7gc6jnja0rpr2r3bmi90e9gm0fh5.apps.googleusercontent.com',
     iosClientId: '361116656518-bhol1t9munjvcfgb0pgi83php9prco71.apps.googleusercontent.com',
     iosBundleId: 'com.example.dinaflutter',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyAYnM8ROa9KHj9jGkdquH-I1pr0IXMyVDM',
     appId: '1:361116656518:ios:a38e31a666d830636dc207',
     messagingSenderId: '361116656518',
     projectId: 'dina95',
     storageBucket: 'dina95.firebasestorage.app',
-    androidClientId: '361116656518-lop5tk7087nqq3b4hacrolsop4hs9e81.apps.googleusercontent.com',
+    androidClientId: '361116656518-ju6g7gc6jnja0rpr2r3bmi90e9gm0fh5.apps.googleusercontent.com',
     iosClientId: '361116656518-bhol1t9munjvcfgb0pgi83php9prco71.apps.googleusercontent.com',
     iosBundleId: 'com.example.dinaflutter',
   );

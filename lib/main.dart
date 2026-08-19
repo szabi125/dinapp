@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
 import 'login_screen.dart';
+import 'dart:async';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -3490,36 +3491,70 @@ class _BottomNavigation
    JELENLÉT
    ============================================================ */
 
-class AttendancePage
-    extends StatefulWidget {
+
+class AttendancePage extends StatefulWidget {
   const AttendancePage({
     super.key,
   });
 
   @override
-  State<AttendancePage>
-  createState() =>
+  State<AttendancePage> createState() =>
       _AttendancePageState();
 }
 
 class _AttendancePageState
     extends State<AttendancePage> {
+
   final FirebaseAuth _auth =
       FirebaseAuth.instance;
 
-  final FirebaseFirestore
-  _firestore =
+  final FirebaseFirestore _firestore =
       FirebaseFirestore.instance;
 
   bool isLoading = true;
+
   bool isCheckedIn = false;
   bool isCheckedOut = false;
 
+  // ============================================================
+  // SZABADSÁG
+  // ============================================================
+
+  bool isHoliday = false;
+
+  bool holidayWorkerCountAdded = false;
+
+  bool holidayWorkerCountRemoved = false;
+
+  // ============================================================
+  // JELENLÉT
+  // ============================================================
+
   String? selectedProject;
+
   String? checkInTime;
+
   String? checkOutTime;
 
   List<String> projects = [];
+
+  // ============================================================
+  // TÚLÓRA
+  // ============================================================
+
+  bool overtimeDecision = false;
+
+  bool overtimePromptShown = false;
+
+  String? overtimeStart;
+
+  String? overtimeEnd;
+
+  Timer? overtimeTimer;
+
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
@@ -3527,21 +3562,326 @@ class _AttendancePageState
 
     loadAttendance();
     loadProjects();
+
+    // 10 másodpercenként ellenőrizzük,
+    // hogy elérkezett-e a 16:00.
+    overtimeTimer = Timer.periodic(
+      const Duration(seconds: 10),
+          (_) {
+        checkOvertimeTime();
+      },
+    );
   }
 
+  @override
+  void dispose() {
+    overtimeTimer?.cancel();
+
+    super.dispose();
+  }
+
+  // ============================================================
+  // MAI DÁTUM
+  // ============================================================
+
   String get today {
-    final now =
-    DateTime.now();
+    final now = DateTime.now();
 
     return "${now.year.toString().padLeft(4, '0')}-"
         "${now.month.toString().padLeft(2, '0')}-"
         "${now.day.toString().padLeft(2, '0')}";
   }
 
-  Future<void>
-  loadAttendance() async {
-    final user =
-        _auth.currentUser;
+  // ============================================================
+  // AKTUÁLIS IDŐ
+  // ============================================================
+
+  String get currentTime {
+    final now = DateTime.now();
+
+    return "${now.hour.toString().padLeft(2, '0')}:"
+        "${now.minute.toString().padLeft(2, '0')}";
+  }
+
+  // ============================================================
+  // 16:00 ELLENŐRZÉSE
+  // ============================================================
+
+  Future<void> checkOvertimeTime() async {
+    if (!mounted) return;
+
+    if (isHoliday) return;
+
+    if (!isCheckedIn) return;
+
+    if (overtimePromptShown) return;
+
+    final now = DateTime.now();
+
+    // 16:00 előtt nincs túlóra kérdés.
+    if (now.hour < 16) {
+      return;
+    }
+
+    // Már van eldöntött túlóra.
+    if (overtimeDecision) {
+      return;
+    }
+
+    await askOvertime();
+  }
+
+  // ============================================================
+  // TÚLÓRA KÉRDÉS
+  // ============================================================
+
+  Future<void> askOvertime() async {
+    if (!mounted) return;
+
+    if (isHoliday) return;
+
+    if (!isCheckedIn) return;
+
+    if (overtimePromptShown) return;
+
+    // Azonnal true, hogy ne jelenjen meg többször
+    // párhuzamosan.
+    setState(() {
+      overtimePromptShown = true;
+    });
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text(
+            "Túlóra",
+          ),
+          content: const Text(
+            "Szeretnél ma túlórázni?\n\n"
+                "16:00-tól kezdődik a túlóra.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false);
+              },
+              child: const Text(
+                "Nem, kicsekkolok",
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(true);
+              },
+              child: const Text(
+                "Igen, túlórázom",
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    if (result == true) {
+      await startOvertime();
+    } else {
+      await finishNormalWorkday();
+    }
+  }
+
+  // ============================================================
+  // TÚLÓRA ELINDÍTÁSA
+  // ============================================================
+
+  Future<void> startOvertime() async {
+    final user = _auth.currentUser;
+
+    if (user == null) return;
+
+    try {
+      final checkinRef = _firestore
+          .collection("users")
+          .doc(user.uid)
+          .collection("checkins")
+          .doc(today);
+
+      await checkinRef.update({
+        // Nagyon fontos:
+        // túlóránál a checkoutTime 16:00 marad.
+        "checkOutTime": "16:00",
+
+        "overtimeDecision": true,
+
+        "overtimeStart": "16:00",
+
+        // A tényleges kicsekkolásig null.
+        "overtimeEnd": null,
+
+        "overtimePromptShown": true,
+      });
+
+      if (mounted) {
+        setState(() {
+          overtimeDecision = true;
+
+          overtimeStart = "16:00";
+
+          overtimeEnd = null;
+
+          // Továbbra is dolgozik.
+          isCheckedIn = true;
+
+          isCheckedOut = false;
+
+          // Ez szándékosan 16:00.
+          checkOutTime = "16:00";
+        });
+      }
+
+      showMessage(
+        "A túlóra elindult. Kicsekkoláskor rögzítjük a tényleges időt.",
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          overtimePromptShown = false;
+        });
+      }
+
+      showError(
+        "Nem sikerült elindítani a túlórát: $e",
+      );
+    }
+  }
+
+  // ============================================================
+  // NORMÁL MUNKANAP LEZÁRÁSA 16:00-KOR
+  // ============================================================
+
+  Future<void> finishNormalWorkday() async {
+    final user = _auth.currentUser;
+
+    if (user == null) return;
+
+    if (selectedProject == null) return;
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final checkinRef = _firestore
+          .collection("users")
+          .doc(user.uid)
+          .collection("checkins")
+          .doc(today);
+
+      await checkinRef.update({
+        "checkOutTime": "16:00",
+
+        "overtimeDecision": false,
+
+        "overtimePromptShown": true,
+      });
+
+      // --------------------------------------------------------
+      // PROJEKT -1
+      // --------------------------------------------------------
+
+      await removeWorkerFromProject(
+        selectedProject!,
+      );
+
+      if (mounted) {
+        setState(() {
+          checkOutTime = "16:00";
+
+          isCheckedIn = false;
+
+          isCheckedOut = true;
+
+          overtimeDecision = false;
+
+          overtimePromptShown = true;
+        });
+      }
+
+      showMessage(
+        "Munkanap lezárva. Kicsekkolás: 16:00",
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          overtimePromptShown = false;
+        });
+      }
+
+      showError(
+        "Nem sikerült lezárni a munkanapot: $e",
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  // ============================================================
+  // PROJEKT DOLGOZÓ -1
+  // ============================================================
+
+  Future<void> removeWorkerFromProject(
+      String projectName,
+      ) async {
+
+    final projectRef = _firestore
+        .collection("projects")
+        .doc(projectName);
+
+    await _firestore.runTransaction(
+          (transaction) async {
+        final snapshot =
+        await transaction.get(
+          projectRef,
+        );
+
+        if (snapshot.exists) {
+          final data =
+          snapshot.data();
+
+          final currentWorkers =
+          (data?["Munkások száma"] ?? 0)
+          as num;
+
+          final newCount =
+          currentWorkers > 0
+              ? currentWorkers - 1
+              : 0;
+
+          transaction.update(
+            projectRef,
+            {
+              "Munkások száma":
+              newCount,
+            },
+          );
+        }
+      },
+    );
+  }
+
+  // ============================================================
+  // JELENLÉT BETÖLTÉSE
+  // ============================================================
+
+  Future<void> loadAttendance() async {
+    final user = _auth.currentUser;
 
     if (user == null) {
       if (mounted) {
@@ -3554,8 +3894,7 @@ class _AttendancePageState
     }
 
     try {
-      final document =
-      await _firestore
+      final document = await _firestore
           .collection("users")
           .doc(user.uid)
           .collection("checkins")
@@ -3563,29 +3902,125 @@ class _AttendancePageState
           .get();
 
       if (document.exists) {
-        final data =
-        document.data()!;
+        final data = document.data()!;
+
+        final project =
+        data["project"]?.toString();
+
+        final checkIn =
+        data["checkInTime"]?.toString();
+
+        final checkOut =
+        data["checkOutTime"]?.toString();
+
+        final workerCountAdded =
+            data["workerCountAdded"] == true;
+
+        final workerCountRemoved =
+            data["workerCountRemoved"] == true;
+
+        final overtime =
+            data["overtimeDecision"] == true;
+
+        final overtimePrompt =
+            data["overtimePromptShown"] == true;
+
+        final overtimeStartValue =
+        data["overtimeStart"]?.toString();
+
+        final overtimeEndValue =
+        data["overtimeEnd"]?.toString();
 
         if (mounted) {
           setState(() {
-            selectedProject =
-                data["project"]
-                    ?.toString();
+            selectedProject = project;
 
-            checkInTime =
-                data["checkInTime"]
-                    ?.toString();
+            checkInTime = checkIn;
 
-            checkOutTime =
-                data["checkOutTime"]
-                    ?.toString();
+            checkOutTime = checkOut;
 
-            isCheckedIn =
-                checkInTime != null &&
-                    checkOutTime == null;
+            overtimeDecision = overtime;
 
-            isCheckedOut =
-                checkOutTime != null;
+            overtimePromptShown =
+                overtimePrompt;
+
+            overtimeStart =
+                overtimeStartValue;
+
+            overtimeEnd =
+                overtimeEndValue;
+
+            // --------------------------------------------------
+            // SZABADSÁG
+            // --------------------------------------------------
+
+            isHoliday =
+                project == "Szabi";
+
+            holidayWorkerCountAdded =
+                workerCountAdded;
+
+            holidayWorkerCountRemoved =
+                workerCountRemoved;
+
+            // --------------------------------------------------
+            // JELENLÉT
+            // --------------------------------------------------
+            //
+            // Ha túlórázik:
+            //
+            // checkOutTime = 16:00
+            // overtimeEnd = null
+            //
+            // Ettől még továbbra is becsekkolva van.
+            //
+
+            if (overtime &&
+                overtimeEndValue == null) {
+
+              isCheckedIn = true;
+
+              isCheckedOut = false;
+
+            } else {
+
+              isCheckedIn =
+                  checkIn != null &&
+                      checkOut == null;
+
+              isCheckedOut =
+                  checkOut != null &&
+                      (!overtime ||
+                          overtimeEndValue != null);
+            }
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            selectedProject = null;
+
+            checkInTime = null;
+
+            checkOutTime = null;
+
+            isCheckedIn = false;
+
+            isCheckedOut = false;
+
+            isHoliday = false;
+
+            holidayWorkerCountAdded = false;
+
+            holidayWorkerCountRemoved = false;
+
+            overtimeDecision = false;
+
+            overtimePromptShown = false;
+
+            overtimeStart = null;
+
+            overtimeEnd = null;
           });
         }
       }
@@ -3602,11 +4037,13 @@ class _AttendancePageState
     }
   }
 
-  Future<void>
-  loadProjects() async {
+  // ============================================================
+  // PROJEKTEK BETÖLTÉSE
+  // ============================================================
+
+  Future<void> loadProjects() async {
     try {
-      final snapshot =
-      await _firestore
+      final snapshot = await _firestore
           .collection("projects")
           .get();
 
@@ -3616,15 +4053,13 @@ class _AttendancePageState
             (doc) => doc.id,
       )
           .where(
-            (name) =>
-        name != "Szabi",
+            (name) => name != "Szabi",
       )
           .toList();
 
       if (mounted) {
         setState(() {
-          projects =
-              loadedProjects;
+          projects = loadedProjects;
         });
       }
     } catch (e) {
@@ -3634,22 +4069,156 @@ class _AttendancePageState
     }
   }
 
+  // ============================================================
+  // BECSSEKKOLÁS
+  // ============================================================
+
   Future<void> checkIn() async {
-    final user =
-        _auth.currentUser;
+    final user = _auth.currentUser;
 
     if (user == null) {
       showError(
         "Nincs bejelentkezett felhasználó.",
       );
+
       return;
     }
 
+    // ----------------------------------------------------------
+    // SZABADSÁG ELLENŐRZÉS
+    // ----------------------------------------------------------
+
+    if (isHoliday) {
+      showError(
+        "Ma szabadságon vagy, ezért nem tudsz becsekkolni.",
+      );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // FIRESTORE ELLENŐRZÉS
+    // ----------------------------------------------------------
+
+    try {
+      final checkinRef = _firestore
+          .collection("users")
+          .doc(user.uid)
+          .collection("checkins")
+          .doc(today);
+
+      final existingDocument =
+      await checkinRef.get();
+
+      if (existingDocument.exists) {
+        final data =
+        existingDocument.data();
+
+        final project =
+        data?["project"]?.toString();
+
+        // ------------------------------------------------------
+        // SZABADSÁG
+        // ------------------------------------------------------
+
+        if (project == "Szabi") {
+          if (mounted) {
+            setState(() {
+              isHoliday = true;
+
+              selectedProject = "Szabi";
+
+              holidayWorkerCountAdded =
+                  data?["workerCountAdded"] == true;
+
+              holidayWorkerCountRemoved =
+                  data?["workerCountRemoved"] == true;
+            });
+          }
+
+          showError(
+            "Ma szabadságon vagy, ezért nem tudsz becsekkolni.",
+          );
+
+          return;
+        }
+
+        final existingCheckIn =
+        data?["checkInTime"];
+
+        final existingCheckOut =
+        data?["checkOutTime"];
+
+        final existingOvertime =
+            data?["overtimeDecision"] == true;
+
+        final existingOvertimeEnd =
+        data?["overtimeEnd"];
+
+        // ------------------------------------------------------
+        // TÚLÓRÁZIK
+        // ------------------------------------------------------
+
+        if (existingOvertime &&
+            existingOvertimeEnd == null) {
+          showError(
+            "Már túlórázol.",
+          );
+
+          await loadAttendance();
+
+          return;
+        }
+
+        // ------------------------------------------------------
+        // MÁR BE VAN CSSEKKOLVA
+        // ------------------------------------------------------
+
+        if (existingCheckIn != null &&
+            existingCheckOut == null) {
+
+          showError(
+            "Már be vagy csekkolva.",
+          );
+
+          await loadAttendance();
+
+          return;
+        }
+
+        // ------------------------------------------------------
+        // MÁR KICSEKKOLT
+        // ------------------------------------------------------
+
+        if (existingCheckOut != null) {
+          showError(
+            "Ma már kicsekkoltál.",
+          );
+
+          await loadAttendance();
+
+          return;
+        }
+      }
+    } catch (e) {
+      showError(
+        "Nem sikerült ellenőrizni a mai jelenlétet: $e",
+      );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // PROJEKT ELLENŐRZÉS
+    // ----------------------------------------------------------
+
     if (selectedProject == null ||
         selectedProject!.isEmpty) {
+
       showError(
         "Először válassz projektet!",
       );
+
       return;
     }
 
@@ -3658,56 +4227,65 @@ class _AttendancePageState
     });
 
     try {
-      final now =
-      DateTime.now();
+      final now = DateTime.now();
 
       final time =
           "${now.hour.toString().padLeft(2, '0')}:"
           "${now.minute.toString().padLeft(2, '0')}";
 
-      final checkinRef =
-      _firestore
+      final checkinRef = _firestore
           .collection("users")
           .doc(user.uid)
           .collection("checkins")
           .doc(today);
 
+      // --------------------------------------------------------
+      // CHECKIN
+      // --------------------------------------------------------
+
       await checkinRef.set({
-        "project":
-        selectedProject,
-        "checkInTime":
-        time,
-        "checkOutTime":
-        null,
-        "overtimeDecision":
-        false,
+        "project": selectedProject,
+
+        "checkInTime": time,
+
+        "checkOutTime": null,
+
+        "overtimeDecision": false,
+
+        "overtimePromptShown": false,
+
+        "overtimeStart": null,
+
+        "overtimeEnd": null,
+
+        "workerCountAdded": true,
+
+        "workerCountRemoved": false,
       });
 
-      final projectRef =
-      _firestore
-          .collection("projects")
-          .doc(
-        selectedProject,
-      );
+      // --------------------------------------------------------
+      // PROJEKT +1
+      // --------------------------------------------------------
 
-      await _firestore
-          .runTransaction(
+      final projectRef = _firestore
+          .collection("projects")
+          .doc(selectedProject);
+
+      await _firestore.runTransaction(
             (transaction) async {
+
           final snapshot =
-          await transaction
-              .get(
+          await transaction.get(
             projectRef,
           );
 
-          if (snapshot
-              .exists) {
+          if (snapshot.exists) {
+
             final data =
             snapshot.data();
 
             final currentWorkers =
-            (data?[
-            "Munkások száma"] ??
-                0)
+            (data?["Munkások száma"] ?? 0)
             as num;
 
             transaction.update(
@@ -3721,17 +4299,41 @@ class _AttendancePageState
         },
       );
 
-      setState(() {
-        checkInTime = time;
-        checkOutTime = null;
-        isCheckedIn = true;
-        isCheckedOut = false;
-      });
+      // --------------------------------------------------------
+      // UI
+      // --------------------------------------------------------
+
+      if (mounted) {
+        setState(() {
+          checkInTime = time;
+
+          checkOutTime = null;
+
+          isCheckedIn = true;
+
+          isCheckedOut = false;
+
+          isHoliday = false;
+
+          holidayWorkerCountAdded = false;
+
+          holidayWorkerCountRemoved = false;
+
+          overtimeDecision = false;
+
+          overtimePromptShown = false;
+
+          overtimeStart = null;
+
+          overtimeEnd = null;
+        });
+      }
 
       showMessage(
         "Sikeres becsekkolás!",
       );
     } catch (e) {
+
       showError(
         "Becsekkolási hiba: $e",
       );
@@ -3744,14 +4346,30 @@ class _AttendancePageState
     }
   }
 
+  // ============================================================
+  // KICSEKKOLÁS
+  // ============================================================
+
   Future<void> checkOut() async {
-    final user =
-        _auth.currentUser;
+    final user = _auth.currentUser;
 
     if (user == null) {
       showError(
         "Nincs bejelentkezett felhasználó.",
       );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // SZABADSÁG
+    // ----------------------------------------------------------
+
+    if (isHoliday) {
+      showError(
+        "Szabadságon vagy, ezért nincs mit kicsekkolnod.",
+      );
+
       return;
     }
 
@@ -3759,6 +4377,23 @@ class _AttendancePageState
       showError(
         "Nincs kiválasztott projekt.",
       );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // HA 16:00 UTÁN VAN ÉS MÉG NINCS DÖNTÉS
+    // ----------------------------------------------------------
+
+    final now = DateTime.now();
+
+    if (now.hour >= 16 &&
+        !overtimeDecision &&
+        !overtimePromptShown &&
+        isCheckedIn) {
+
+      await askOvertime();
+
       return;
     }
 
@@ -3767,84 +4402,104 @@ class _AttendancePageState
     });
 
     try {
-      final now =
-      DateTime.now();
+      final time = currentTime;
 
-      final time =
-          "${now.hour.toString().padLeft(2, '0')}:"
-          "${now.minute.toString().padLeft(2, '0')}";
-
-      final checkinRef =
-      _firestore
+      final checkinRef = _firestore
           .collection("users")
           .doc(user.uid)
           .collection("checkins")
           .doc(today);
 
-      await checkinRef.update({
-        "checkOutTime":
-        time,
-      });
+      // ========================================================
+      // TÚLÓRA KICSEKKOLÁS
+      // ========================================================
 
-      final projectRef =
-      _firestore
-          .collection("projects")
-          .doc(
-        selectedProject,
-      );
+      if (overtimeDecision) {
 
-      await _firestore
-          .runTransaction(
-            (transaction) async {
-          final snapshot =
-          await transaction
-              .get(
-            projectRef,
-          );
+        await checkinRef.update({
 
-          if (snapshot
-              .exists) {
-            final data =
-            snapshot.data();
+          // FONTOS:
+          // túlóránál ez továbbra is 16:00!
+          "checkOutTime": "16:00",
 
-            final currentWorkers =
-            (data?[
-            "Munkások száma"] ??
-                0)
-            as num;
+          // A tényleges kicsekkolás ideje ide kerül.
+          "overtimeEnd": time,
 
-            final newCount =
-            currentWorkers > 0
-                ? currentWorkers -
-                1
-                : 0;
+          "overtimeDecision": true,
 
-            transaction.update(
-              projectRef,
-              {
-                "Munkások száma":
-                newCount,
-              },
-            );
-          }
-        },
-      );
+          "overtimeStart": "16:00",
 
-      setState(() {
-        checkOutTime =
-            time;
+          "overtimePromptShown": true,
+        });
 
-        isCheckedIn =
-        false;
+        // ------------------------------------------------------
+        // PROJEKT -1
+        // ------------------------------------------------------
 
-        isCheckedOut =
-        true;
-      });
+        await removeWorkerFromProject(
+          selectedProject!,
+        );
 
-      showMessage(
-        "Sikeres kicsekkolás!",
-      );
+        if (mounted) {
+          setState(() {
+
+            // A normál munkaidő vége.
+            checkOutTime = "16:00";
+
+            // Tényleges túlóra vége.
+            overtimeEnd = time;
+
+            isCheckedIn = false;
+
+            isCheckedOut = true;
+          });
+        }
+
+        showMessage(
+          "Sikeres kicsekkolás! Túlóra vége: $time",
+        );
+
+      } else {
+
+        // ======================================================
+        // NORMÁL KICSEKKOLÁS
+        // ======================================================
+
+        await checkinRef.update({
+          "checkOutTime": time,
+
+          "overtimeDecision": false,
+
+          "overtimePromptShown":
+          overtimePromptShown,
+        });
+
+        // ------------------------------------------------------
+        // PROJEKT -1
+        // ------------------------------------------------------
+
+        await removeWorkerFromProject(
+          selectedProject!,
+        );
+
+        if (mounted) {
+          setState(() {
+
+            checkOutTime = time;
+
+            isCheckedIn = false;
+
+            isCheckedOut = true;
+          });
+        }
+
+        showMessage(
+          "Sikeres kicsekkolás!",
+        );
+      }
+
     } catch (e) {
+
       showError(
         "Kicsekkolási hiba: $e",
       );
@@ -3857,13 +4512,18 @@ class _AttendancePageState
     }
   }
 
+  // ============================================================
+  // ÜZENET
+  // ============================================================
+
   void showMessage(
-      String message) {
+      String message,
+      ) {
+
     if (!mounted) return;
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
       SnackBar(
         content:
         Text(message),
@@ -3871,13 +4531,18 @@ class _AttendancePageState
     );
   }
 
+  // ============================================================
+  // HIBA
+  // ============================================================
+
   void showError(
-      String message) {
+      String message,
+      ) {
+
     if (!mounted) return;
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
       SnackBar(
         backgroundColor:
         Colors.red,
@@ -3888,8 +4553,15 @@ class _AttendancePageState
     );
   }
 
+  // ============================================================
+  // UI
+  // ============================================================
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+      BuildContext context,
+      ) {
+
     final user =
         _auth.currentUser;
 
@@ -3899,7 +4571,8 @@ class _AttendancePageState
         0xFFF5F7FA,
       ),
 
-      appBar: AppBar(
+      appBar:
+      AppBar(
         backgroundColor:
         const Color(
           0xFF101E2E,
@@ -3917,29 +4590,37 @@ class _AttendancePageState
         true,
       ),
 
-      body: isLoading
+      body:
+      isLoading
           ? const Center(
         child:
         CircularProgressIndicator(),
       )
           : SingleChildScrollView(
         padding:
-        const EdgeInsets
-            .all(18),
+        const EdgeInsets.all(
+          18,
+        ),
 
-        child: Column(
+        child:
+        Column(
           crossAxisAlignment:
-          CrossAxisAlignment
-              .start,
+          CrossAxisAlignment.start,
 
           children: [
+
+            // ==================================================
+            // FELHASZNÁLÓ
+            // ==================================================
+
             Container(
               width:
               double.infinity,
 
               padding:
-              const EdgeInsets
-                  .all(18),
+              const EdgeInsets.all(
+                18,
+              ),
 
               decoration:
               BoxDecoration(
@@ -3947,8 +4628,7 @@ class _AttendancePageState
                 Colors.white,
 
                 borderRadius:
-                BorderRadius
-                    .circular(
+                BorderRadius.circular(
                   12,
                 ),
 
@@ -3961,17 +4641,19 @@ class _AttendancePageState
                 ),
               ),
 
-              child: Row(
+              child:
+              Row(
                 children: [
+
                   CircleAvatar(
-                    radius: 28,
+                    radius:
+                    28,
 
                     backgroundImage:
                     user?.photoURL !=
                         null
                         ? NetworkImage(
-                      user!
-                          .photoURL!,
+                      user!.photoURL!,
                     )
                         : null,
 
@@ -3979,23 +4661,25 @@ class _AttendancePageState
                     user?.photoURL ==
                         null
                         ? const Icon(
-                      Icons
-                          .person,
+                      Icons.person,
                       size: 30,
                     )
                         : null,
                   ),
 
                   const SizedBox(
-                      width: 14),
+                    width:
+                    14,
+                  ),
 
                   Expanded(
-                    child: Column(
+                    child:
+                    Column(
                       crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
+                      CrossAxisAlignment.start,
 
                       children: [
+
                         Text(
                           user?.displayName ??
                               "Felhasználó",
@@ -4005,13 +4689,14 @@ class _AttendancePageState
                             fontSize:
                             18,
                             fontWeight:
-                            FontWeight
-                                .bold,
+                            FontWeight.bold,
                           ),
                         ),
 
                         const SizedBox(
-                            height: 4),
+                          height:
+                          4,
+                        ),
 
                         Text(
                           user?.email ??
@@ -4035,17 +4720,23 @@ class _AttendancePageState
             ),
 
             const SizedBox(
-                height: 18),
+              height:
+              18,
+            ),
+
+            // ==================================================
+            // MAI JELENLÉT
+            // ==================================================
 
             const Text(
               "MAI JELENLÉT",
 
               style:
               TextStyle(
-                fontSize: 12,
+                fontSize:
+                12,
                 fontWeight:
-                FontWeight
-                    .w800,
+                FontWeight.w800,
                 color:
                 Color(
                   0xFF30363C,
@@ -4054,14 +4745,17 @@ class _AttendancePageState
             ),
 
             const SizedBox(
-                height: 8),
+              height:
+              8,
+            ),
 
             Text(
               today,
 
               style:
               const TextStyle(
-                fontSize: 12,
+                fontSize:
+                12,
                 color:
                 Color(
                   0xFF8A9098,
@@ -4070,153 +4764,372 @@ class _AttendancePageState
             ),
 
             const SizedBox(
-                height: 18),
-
-            const Text(
-              "PROJEKT",
-
-              style:
-              TextStyle(
-                fontSize: 11,
-                fontWeight:
-                FontWeight
-                    .w800,
-                color:
-                Color(
-                  0xFF30363C,
-                ),
-              ),
+              height:
+              18,
             ),
 
-            const SizedBox(
-                height: 7),
+            // ==================================================
+            // SZABADSÁG
+            // ==================================================
 
-            DropdownButtonFormField<
-                String>(
-              initialValue:
-              selectedProject,
+            if (isHoliday)
+              Container(
+                width:
+                double.infinity,
 
-              decoration:
-              InputDecoration(
-                filled: true,
+                padding:
+                const EdgeInsets.all(
+                  20,
+                ),
 
-                fillColor:
-                Colors.white,
-
-                border:
-                OutlineInputBorder(
-                  borderRadius:
-                  BorderRadius
-                      .circular(
-                    10,
+                decoration:
+                BoxDecoration(
+                  color:
+                  const Color(
+                    0xFFFFF3CD,
                   ),
 
-                  borderSide:
-                  const BorderSide(
+                  borderRadius:
+                  BorderRadius.circular(
+                    12,
+                  ),
+
+                  border:
+                  Border.all(
                     color:
-                    Color(
-                      0xFFE1E6EB,
+                    const Color(
+                      0xFFFFD666,
                     ),
+                  ),
+                ),
+
+                child:
+                Column(
+                  children: [
+
+                    const Icon(
+                      Icons.beach_access,
+
+                      size:
+                      50,
+
+                      color:
+                      Color(
+                        0xFFD99A00,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height:
+                      10,
+                    ),
+
+                    const Text(
+                      "Ma szabadságon vagy",
+
+                      style:
+                      TextStyle(
+                        fontSize:
+                        20,
+                        fontWeight:
+                        FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height:
+                      8,
+                    ),
+
+                    const Text(
+                      "Ezen a napon nem tudsz becsekkolni.",
+
+                      textAlign:
+                      TextAlign.center,
+
+                      style:
+                      TextStyle(
+                        fontSize:
+                        14,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height:
+                      8,
+                    ),
+
+                    Text(
+                      holidayWorkerCountAdded
+                          ? "A Szabi projekt létszámába már beleszámítasz."
+                          : "A Szabi projekt létszámába még nem kerültél bele.",
+
+                      textAlign:
+                      TextAlign.center,
+
+                      style:
+                      const TextStyle(
+                        fontSize:
+                        12,
+                        color:
+                        Color(
+                          0xFF777777,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // ==================================================
+            // NORMÁL JELENLÉT
+            // ==================================================
+
+            if (!isHoliday) ...[
+
+              const Text(
+                "PROJEKT",
+
+                style:
+                TextStyle(
+                  fontSize:
+                  11,
+                  fontWeight:
+                  FontWeight.w800,
+                  color:
+                  Color(
+                    0xFF30363C,
                   ),
                 ),
               ),
 
-              hint:
-              const Text(
-                "Válassz projektet",
+              const SizedBox(
+                height:
+                7,
               ),
 
-              items:
-              projects.map(
-                    (project) {
-                  return DropdownMenuItem<
-                      String>(
-                    value:
-                    project,
+              DropdownButtonFormField<
+                  String>(
+                initialValue:
+                selectedProject,
 
-                    child:
-                    Text(
-                      project,
+                decoration:
+                InputDecoration(
+                  filled:
+                  true,
+
+                  fillColor:
+                  Colors.white,
+
+                  border:
+                  OutlineInputBorder(
+                    borderRadius:
+                    BorderRadius.circular(
+                      10,
                     ),
+
+                    borderSide:
+                    const BorderSide(
+                      color:
+                      Color(
+                        0xFFE1E6EB,
+                      ),
+                    ),
+                  ),
+                ),
+
+                hint:
+                const Text(
+                  "Válassz projektet",
+                ),
+
+                items:
+                projects.map(
+                      (project) {
+
+                    return
+                      DropdownMenuItem<
+                          String>(
+                        value:
+                        project,
+
+                        child:
+                        Text(
+                          project,
+                        ),
+                      );
+                  },
+                ).toList(),
+
+                onChanged:
+                isCheckedIn ||
+                    isCheckedOut
+                    ? null
+                    : (value) {
+
+                  setState(
+                        () {
+
+                      selectedProject =
+                          value;
+                    },
                   );
                 },
-              ).toList(),
+              ),
 
-              onChanged:
-              isCheckedIn ||
-                  isCheckedOut
-                  ? null
-                  : (value) {
-                setState(
-                      () {
-                    selectedProject =
-                        value;
-                  },
-                );
-              },
-            ),
+              const SizedBox(
+                height:
+                25,
+              ),
 
-            const SizedBox(
-                height: 25),
+              // ==================================================
+              // TÚLÓRA ÁLLAPOT
+              // ==================================================
 
-            Container(
-              width:
-              double.infinity,
+              if (overtimeDecision &&
+                  !isCheckedOut)
+                Container(
+                  width:
+                  double.infinity,
 
-              padding:
-              const EdgeInsets
-                  .all(20),
+                  margin:
+                  const EdgeInsets.only(
+                    bottom:
+                    15,
+                  ),
 
-              decoration:
-              BoxDecoration(
-                color: isCheckedIn
-                    ? const Color(
-                  0xFFE8F7EF,
-                )
-                    : isCheckedOut
-                    ? const Color(
-                  0xFFEAF1FF,
-                )
-                    : Colors
-                    .white,
+                  padding:
+                  const EdgeInsets.all(
+                    18,
+                  ),
 
-                borderRadius:
-                BorderRadius
-                    .circular(
-                  12,
+                  decoration:
+                  BoxDecoration(
+                    color:
+                    const Color(
+                      0xFFFFF3CD,
+                    ),
+
+                    borderRadius:
+                    BorderRadius.circular(
+                      12,
+                    ),
+
+                    border:
+                    Border.all(
+                      color:
+                      const Color(
+                        0xFFFFD666,
+                      ),
+                    ),
+                  ),
+
+                  child:
+                  Column(
+                    children: [
+
+                      const Icon(
+                        Icons
+                            .access_time_filled,
+
+                        size:
+                        40,
+
+                        color:
+                        Color(
+                          0xFFD99A00,
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height:
+                        8,
+                      ),
+
+                      const Text(
+                        "Túlórázol",
+
+                        style:
+                        TextStyle(
+                          fontSize:
+                          20,
+                          fontWeight:
+                          FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height:
+                        6,
+                      ),
+
+                      const Text(
+                        "A normál munkaidő vége: 16:00",
+
+                        textAlign:
+                        TextAlign.center,
+                      ),
+
+                      const SizedBox(
+                        height:
+                        4,
+                      ),
+
+                      const Text(
+                        "A tényleges kicsekkoláskor rögzítjük a túlóra végét.",
+
+                        textAlign:
+                        TextAlign.center,
+
+                        style:
+                        TextStyle(
+                          fontSize:
+                          12,
+                          color:
+                          Color(
+                            0xFF777777,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
 
-                border:
-                Border.all(
-                  color: isCheckedIn
+              // ==================================================
+              // JELENLÉTI KÁRTYA
+              // ==================================================
+
+              Container(
+                width:
+                double.infinity,
+
+                padding:
+                const EdgeInsets.all(
+                  20,
+                ),
+
+                decoration:
+                BoxDecoration(
+                  color:
+                  isCheckedIn
                       ? const Color(
-                    0xFF21B573,
+                    0xFFE8F7EF,
                   )
                       : isCheckedOut
                       ? const Color(
-                    0xFF1976E8,
+                    0xFFEAF1FF,
                   )
-                      : const Color(
-                    0xFFE6EAEF,
+                      : Colors.white,
+
+                  borderRadius:
+                  BorderRadius.circular(
+                    12,
                   ),
-                ),
-              ),
 
-              child: Column(
-                children: [
-                  Icon(
+                  border:
+                  Border.all(
+                    color:
                     isCheckedIn
-                        ? Icons
-                        .check_circle
-                        : isCheckedOut
-                        ? Icons
-                        .done_all
-                        : Icons
-                        .access_time,
-
-                    size: 48,
-
-                    color: isCheckedIn
                         ? const Color(
                       0xFF21B573,
                     )
@@ -4225,133 +5138,207 @@ class _AttendancePageState
                       0xFF1976E8,
                     )
                         : const Color(
-                      0xFF8A9098,
+                      0xFFE6EAEF,
                     ),
                   ),
+                ),
 
-                  const SizedBox(
-                      height: 10),
+                child:
+                Column(
+                  children: [
 
-                  Text(
-                    isCheckedIn
-                        ? "Jelenleg dolgozol"
-                        : isCheckedOut
-                        ? "Már kicsekkoltál"
-                        : "Nincs becsekkolva",
+                    Icon(
+                      isCheckedIn
+                          ? Icons.check_circle
+                          : isCheckedOut
+                          ? Icons.done_all
+                          : Icons.access_time,
 
-                    style:
-                    const TextStyle(
-                      fontSize: 20,
-                      fontWeight:
-                      FontWeight
-                          .bold,
+                      size:
+                      48,
+
+                      color:
+                      isCheckedIn
+                          ? const Color(
+                        0xFF21B573,
+                      )
+                          : isCheckedOut
+                          ? const Color(
+                        0xFF1976E8,
+                      )
+                          : const Color(
+                        0xFF8A9098,
+                      ),
                     ),
-                  ),
 
-                  const SizedBox(
-                      height: 15),
+                    const SizedBox(
+                      height:
+                      10,
+                    ),
 
-                  if (checkInTime !=
-                      null)
                     Text(
-                      "Becsekkolás: "
-                          "$checkInTime",
+                      overtimeDecision &&
+                          !isCheckedOut
+                          ? "Túlórázol"
+                          : isCheckedIn
+                          ? "Jelenleg dolgozol"
+                          : isCheckedOut
+                          ? "Már kicsekkoltál"
+                          : "Nincs becsekkolva",
 
                       style:
                       const TextStyle(
-                        fontSize: 14,
+                        fontSize:
+                        20,
+                        fontWeight:
+                        FontWeight.bold,
                       ),
                     ),
 
-                  if (checkOutTime !=
-                      null)
-                    Padding(
-                      padding:
-                      const EdgeInsets
-                          .only(
-                        top: 5,
-                      ),
+                    const SizedBox(
+                      height:
+                      15,
+                    ),
 
-                      child:
+                    if (checkInTime !=
+                        null)
                       Text(
-                        "Kicsekkolás: "
-                            "$checkOutTime",
+                        "Becsekkolás: "
+                            "$checkInTime",
 
                         style:
                         const TextStyle(
-                          fontSize: 14,
+                          fontSize:
+                          14,
                         ),
                       ),
-                    ),
-                ],
-              ),
-            ),
 
-            const SizedBox(
-                height: 20),
+                    if (checkOutTime !=
+                        null)
+                      Padding(
+                        padding:
+                        const EdgeInsets.only(
+                          top:
+                          5,
+                        ),
 
-            SizedBox(
-              width:
-              double.infinity,
+                        child:
+                        Text(
+                          "Kicsekkolás: "
+                              "$checkOutTime",
 
-              height: 55,
+                          style:
+                          const TextStyle(
+                            fontSize:
+                            14,
+                          ),
+                        ),
+                      ),
 
-              child:
-              ElevatedButton(
-                onPressed:
-                isCheckedOut
-                    ? null
-                    : isCheckedIn
-                    ? checkOut
-                    : checkIn,
+                    if (overtimeDecision &&
+                        overtimeEnd != null)
+                      Padding(
+                        padding:
+                        const EdgeInsets.only(
+                          top:
+                          5,
+                        ),
 
-                style:
-                ElevatedButton
-                    .styleFrom(
-                  backgroundColor:
-                  isCheckedIn
-                      ? const Color(
-                    0xFFE34D4D,
-                  )
-                      : const Color(
-                    0xFF1976E8,
-                  ),
+                        child:
+                        Text(
+                          "Túlóra vége: "
+                              "$overtimeEnd",
 
-                  foregroundColor:
-                  Colors.white,
-
-                  disabledBackgroundColor:
-                  const Color(
-                    0xFFBFC5CB,
-                  ),
-
-                  shape:
-                  RoundedRectangleBorder(
-                    borderRadius:
-                    BorderRadius
-                        .circular(
-                      10,
-                    ),
-                  ),
+                          style:
+                          const TextStyle(
+                            fontSize:
+                            14,
+                            fontWeight:
+                            FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
+              ),
 
-                child: Text(
+              const SizedBox(
+                height:
+                20,
+              ),
+
+              // ==================================================
+              // BE / KICSEKKOLÁS
+              // ==================================================
+
+              SizedBox(
+                width:
+                double.infinity,
+
+                height:
+                55,
+
+                child:
+                ElevatedButton(
+
+                  onPressed:
                   isCheckedOut
-                      ? "MÁR KICSEKKOLTÁL"
+                      ? null
                       : isCheckedIn
-                      ? "KICSEKKOLÁS"
-                      : "BECSSEKKOLÁS",
+                      ? checkOut
+                      : checkIn,
 
                   style:
-                  const TextStyle(
-                    fontWeight:
-                    FontWeight
-                        .bold,
-                    fontSize: 14,
+                  ElevatedButton.styleFrom(
+
+                    backgroundColor:
+                    isCheckedIn
+                        ? const Color(
+                      0xFFE34D4D,
+                    )
+                        : const Color(
+                      0xFF1976E8,
+                    ),
+
+                    foregroundColor:
+                    Colors.white,
+
+                    disabledBackgroundColor:
+                    const Color(
+                      0xFFBFC5CB,
+                    ),
+
+                    shape:
+                    RoundedRectangleBorder(
+                      borderRadius:
+                      BorderRadius.circular(
+                        10,
+                      ),
+                    ),
+                  ),
+
+                  child:
+                  Text(
+
+                    isCheckedOut
+                        ? "MÁR KICSEKKOLTÁL"
+                        : isCheckedIn
+                        ? overtimeDecision
+                        ? "TÚLÓRA KICSEKKOLÁS"
+                        : "KICSEKKOLÁS"
+                        : "BECSSEKKOLÁS",
+
+                    style:
+                    const TextStyle(
+                      fontWeight:
+                      FontWeight.bold,
+                      fontSize:
+                      14,
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -4363,18 +5350,811 @@ class _AttendancePageState
    OTHER PAGES
    ============================================================ */
 
-class CalendarPage
-    extends StatelessWidget {
-  const CalendarPage({
-    super.key,
-  });
+class CalendarPage extends StatefulWidget {
+  const CalendarPage({super.key});
+
+  @override
+  State<CalendarPage> createState() => _CalendarPageState();
+}
+
+class _CalendarPageState extends State<CalendarPage> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  DateTime _currentMonth = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
+
+  final Set<DateTime> _selectedDays = {};
+
+  Set<String> _existingCheckins = {};
+  int _remainingHolidayDays = 0;
+
+  bool _isLoading = true;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCalendarData();
+  }
+
+  // ------------------------------------------------------------
+  // ADATOK BETÖLTÉSE
+  // ------------------------------------------------------------
+
+  Future<void> _loadCalendarData() async {
+    final user = _auth.currentUser;
+
+    if (user == null) {
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+
+    try {
+      final userRef = _firestore
+          .collection('users')
+          .doc(user.uid);
+
+      final userSnapshot = await userRef.get();
+
+      if (userSnapshot.exists) {
+        final data = userSnapshot.data();
+
+        final szabadsag = data?['szabadsag'];
+
+        if (szabadsag is num) {
+          _remainingHolidayDays = szabadsag.toInt();
+        }
+      }
+
+      // Meglévő checkinek lekérése
+      final checkinsSnapshot = await userRef
+          .collection('checkins')
+          .get();
+
+      final existing = <String>{};
+
+      for (final document in checkinsSnapshot.docs) {
+        existing.add(document.id);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _existingCheckins = existing;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Hiba az adatok betöltésekor: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ------------------------------------------------------------
+  // DÁTUM FORMÁZÁSA
+  // ------------------------------------------------------------
+
+  String _dateId(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+
+    return '$year-$month-$day';
+  }
+
+  // ------------------------------------------------------------
+  // MA
+  // ------------------------------------------------------------
+
+  DateTime get _today {
+    final now = DateTime.now();
+
+    return DateTime(
+      now.year,
+      now.month,
+      now.day,
+    );
+  }
+
+  // ------------------------------------------------------------
+  // VAN-E MÁR CHECKIN AZ ADOTT NAPON?
+  // ------------------------------------------------------------
+
+  bool _hasCheckin(DateTime date) {
+    return _existingCheckins.contains(
+      _dateId(date),
+    );
+  }
+
+  // ------------------------------------------------------------
+  // NAP KIVÁLASZTÁSA
+  // ------------------------------------------------------------
+
+  void _selectDay(DateTime date) {
+    final day = DateTime(
+      date.year,
+      date.month,
+      date.day,
+    );
+
+    // Múltbeli nap tiltása
+    if (day.isBefore(_today)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Már elmúlt napra nem lehet szabadságot kivenni.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    // Már létező checkin
+    if (_hasCheckin(day)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Erre a napra már van bejegyzés.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    setState(() {
+      if (_selectedDays.contains(day)) {
+        _selectedDays.remove(day);
+      } else {
+        _selectedDays.add(day);
+      }
+    });
+  }
+
+  // ------------------------------------------------------------
+  // KIVÁLASZTOTT NAPOK SZÁMA
+  // ------------------------------------------------------------
+
+  int get _selectedDaysCount {
+    return _selectedDays.length;
+  }
+
+  // ------------------------------------------------------------
+  // SZABADSÁG KIVÉTELE
+  // ------------------------------------------------------------
+
+  Future<void> _takeHoliday() async {
+    final user = _auth.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Nincs bejelentkezett felhasználó.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    if (_selectedDays.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Válassz ki legalább egy napot.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    // Biztonsági ellenőrzés
+    if (_selectedDaysCount > _remainingHolidayDays) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Nincs elegendő szabadságod. '
+                'Rendelkezésre álló napok: $_remainingHolidayDays.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    // Ellenőrizzük újra, hogy egyik kiválasztott napra
+    // sem került-e közben checkin.
+    for (final day in _selectedDays) {
+      if (_hasCheckin(day)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'A(z) ${_dateId(day)} napra már van bejegyzés.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      if (day.isBefore(_today)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Már elmúlt napra nem lehet szabadságot kivenni.',
+            ),
+          ),
+        );
+
+        return;
+      }
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final userRef = _firestore
+          .collection('users')
+          .doc(user.uid);
+
+      final userSnapshot = await userRef.get();
+
+      if (!userSnapshot.exists) {
+        throw Exception(
+          'A felhasználói dokumentum nem található.',
+        );
+      }
+
+      final userData = userSnapshot.data();
+
+      final currentHolidayValue =
+      userData?['szabadsag'];
+
+      int currentHolidayDays = 0;
+
+      if (currentHolidayValue is num) {
+        currentHolidayDays =
+            currentHolidayValue.toInt();
+      }
+
+      // Újra ellenőrizzük a Firebase aktuális értékét
+      if (_selectedDaysCount > currentHolidayDays) {
+        throw Exception(
+          'Nincs elegendő szabadság.',
+        );
+      }
+
+      // Batch használata:
+      // vagy minden módosítás megtörténik,
+      // vagy egyik sem.
+      final batch = _firestore.batch();
+
+      // --------------------------------------------------------
+      // CHECKINS LÉTREHOZÁSA
+      // --------------------------------------------------------
+
+      for (final day in _selectedDays) {
+        final dateId = _dateId(day);
+
+        final checkinRef = userRef
+            .collection('checkins')
+            .doc(dateId);
+
+        batch.set(
+          checkinRef,
+          {
+            'project': 'Szabi',
+            'checkInTime': null,
+            'checkOutTime': null,
+          },
+        );
+      }
+
+      // --------------------------------------------------------
+      // SZABADSÁG KERET CSÖKKENTÉSE
+      // --------------------------------------------------------
+
+      final newHolidayBalance =
+          currentHolidayDays - _selectedDaysCount;
+
+      batch.update(
+        userRef,
+        {
+          'szabadsag': newHolidayBalance,
+        },
+      );
+
+      // --------------------------------------------------------
+      // MINDEN MENTÉSE
+      // --------------------------------------------------------
+
+      await batch.commit();
+
+      if (!mounted) return;
+
+      setState(() {
+        _remainingHolidayDays =
+            newHolidayBalance;
+
+        for (final day in _selectedDays) {
+          _existingCheckins.add(
+            _dateId(day),
+          );
+        }
+
+        _selectedDays.clear();
+        _isSaving = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Sikeresen kivettél '
+                '$_selectedDaysCount nap szabadságot.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isSaving = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Hiba a szabadság kivételekor: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ------------------------------------------------------------
+  // ELŐZŐ HÓNAP
+  // ------------------------------------------------------------
+
+  void _previousMonth() {
+    setState(() {
+      _currentMonth = DateTime(
+        _currentMonth.year,
+        _currentMonth.month - 1,
+      );
+
+      _selectedDays.clear();
+    });
+  }
+
+  // ------------------------------------------------------------
+  // KÖVETKEZŐ HÓNAP
+  // ------------------------------------------------------------
+
+  void _nextMonth() {
+    setState(() {
+      _currentMonth = DateTime(
+        _currentMonth.year,
+        _currentMonth.month + 1,
+      );
+
+      _selectedDays.clear();
+    });
+  }
+
+  // ------------------------------------------------------------
+  // HÓNAP NEVE
+  // ------------------------------------------------------------
+
+  String _monthName(int month) {
+    const months = [
+      'Január',
+      'Február',
+      'Március',
+      'Április',
+      'Május',
+      'Június',
+      'Július',
+      'Augusztus',
+      'Szeptember',
+      'Október',
+      'November',
+      'December',
+    ];
+
+    return months[month - 1];
+  }
+
+  // ------------------------------------------------------------
+  // NAPTÁR FELÉPÍTÉSE
+  // ------------------------------------------------------------
+
+  List<DateTime?> _generateCalendarDays() {
+    final firstDayOfMonth = DateTime(
+      _currentMonth.year,
+      _currentMonth.month,
+      1,
+    );
+
+    final daysInMonth = DateTime(
+      _currentMonth.year,
+      _currentMonth.month + 1,
+      0,
+    ).day;
+
+    // Hétfő = 1, vasárnap = 7
+    final firstWeekday =
+        firstDayOfMonth.weekday;
+
+    final List<DateTime?> days = [];
+
+    // Üres helyek a hónap elején
+    for (int i = 1; i < firstWeekday; i++) {
+      days.add(null);
+    }
+
+    // Napok
+    for (int day = 1; day <= daysInMonth; day++) {
+      days.add(
+        DateTime(
+          _currentMonth.year,
+          _currentMonth.month,
+          day,
+        ),
+      );
+    }
+
+    return days;
+  }
+
+  // ------------------------------------------------------------
+  // NAP CELLÁJA
+  // ------------------------------------------------------------
+
+  Widget _buildDayCell(DateTime? date) {
+    if (date == null) {
+      return const SizedBox();
+    }
+
+    final isPast = date.isBefore(_today);
+
+    final isSelected =
+    _selectedDays.contains(date);
+
+    final hasCheckin =
+    _hasCheckin(date);
+
+    final isToday =
+        date.year == _today.year &&
+            date.month == _today.month &&
+            date.day == _today.day;
+
+    return GestureDetector(
+      onTap: isPast || hasCheckin
+          ? null
+          : () => _selectDay(date),
+      child: Container(
+        margin: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Colors.blue
+              : hasCheckin
+              ? Colors.orange.withOpacity(0.8)
+              : isToday
+              ? Colors.blue.withOpacity(0.15)
+              : Colors.transparent,
+          borderRadius:
+          BorderRadius.circular(10),
+          border: isToday && !isSelected
+              ? Border.all(
+            color: Colors.blue,
+            width: 1.5,
+          )
+              : null,
+        ),
+        child: Center(
+          child: Text(
+            '${date.day}',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight:
+              isToday || isSelected
+                  ? FontWeight.bold
+                  : FontWeight.normal,
+              color: isSelected
+                  ? Colors.white
+                  : isPast
+                  ? Colors.grey
+                  : hasCheckin
+                  ? Colors.white
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------
+  // UI
+  // ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    return const _SimplePage(
-      title: "Naptár",
-      icon:
-      Icons.calendar_month,
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    final calendarDays =
+    _generateCalendarDays();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Szabadság'),
+        centerTitle: true,
+      ),
+
+      body: Column(
+        children: [
+
+          // ------------------------------------------------------
+          // SZABADSÁG KERET
+          // ------------------------------------------------------
+
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              8,
+            ),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius:
+              BorderRadius.circular(14),
+              color: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest,
+            ),
+            child: Row(
+              children: [
+
+                const Icon(
+                  Icons.beach_access,
+                  size: 30,
+                ),
+
+                const SizedBox(width: 12),
+
+                Column(
+                  crossAxisAlignment:
+                  CrossAxisAlignment.start,
+                  children: [
+
+                    const Text(
+                      'Hátralévő szabadság',
+                      style: TextStyle(
+                        fontSize: 14,
+                      ),
+                    ),
+
+                    const SizedBox(height: 3),
+
+                    Text(
+                      '$_remainingHolidayDays nap',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight:
+                        FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // ------------------------------------------------------
+          // HÓNAP VÁLTÓ
+          // ------------------------------------------------------
+
+          Padding(
+            padding:
+            const EdgeInsets.symmetric(
+              horizontal: 16,
+            ),
+            child: Row(
+              mainAxisAlignment:
+              MainAxisAlignment.spaceBetween,
+              children: [
+
+                IconButton(
+                  onPressed: _previousMonth,
+                  icon: const Icon(
+                    Icons.chevron_left,
+                  ),
+                ),
+
+                Text(
+                  '${_monthName(_currentMonth.month)} '
+                      '${_currentMonth.year}',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight:
+                    FontWeight.bold,
+                  ),
+                ),
+
+                IconButton(
+                  onPressed: _nextMonth,
+                  icon: const Icon(
+                    Icons.chevron_right,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ------------------------------------------------------
+          // HÉT NAPJAI
+          // ------------------------------------------------------
+
+          Padding(
+            padding:
+            const EdgeInsets.symmetric(
+              horizontal: 12,
+            ),
+            child: Row(
+              children: const [
+                _WeekDay('H'),
+                _WeekDay('K'),
+                _WeekDay('Sze'),
+                _WeekDay('Cs'),
+                _WeekDay('P'),
+                _WeekDay('Szo'),
+                _WeekDay('V'),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 4),
+
+          // ------------------------------------------------------
+          // NAPTÁR
+          // ------------------------------------------------------
+
+          Expanded(
+            child: Padding(
+              padding:
+              const EdgeInsets.symmetric(
+                horizontal: 12,
+              ),
+              child: GridView.builder(
+                itemCount: calendarDays.length,
+                gridDelegate:
+                const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 7,
+                  childAspectRatio: 1,
+                ),
+                itemBuilder:
+                    (context, index) {
+                  return _buildDayCell(
+                    calendarDays[index],
+                  );
+                },
+              ),
+            ),
+          ),
+
+          // ------------------------------------------------------
+          // KIVÁLASZTOTT NAPOK
+          // ------------------------------------------------------
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(
+              16,
+              12,
+              16,
+              16,
+            ),
+            child: Column(
+              children: [
+
+                Text(
+                  'Kiválasztott napok: '
+                      '$_selectedDaysCount',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight:
+                    FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed:
+                    _isSaving ||
+                        _selectedDays.isEmpty
+                        ? null
+                        : _takeHoliday,
+                    icon: _isSaving
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child:
+                      CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                        : const Icon(
+                      Icons.beach_access,
+                    ),
+                    label: Text(
+                      _isSaving
+                          ? 'Mentés...'
+                          : 'Szabadság kivétele',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ------------------------------------------------------------
+// HÉT NAPJA
+// ------------------------------------------------------------
+
+class _WeekDay extends StatelessWidget {
+  final String text;
+
+  const _WeekDay(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Center(
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
+      ),
     );
   }
 }
