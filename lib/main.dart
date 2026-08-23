@@ -1,3 +1,9 @@
+import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:excel/excel.dart' as excel2;
+import 'dart:html' as html;
+
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,6 +12,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'login_screen.dart';
 import 'dart:async';
+
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1278,8 +1286,8 @@ class _StatCard
 }
 
 /* ============================================================
-   NAPI ÁTTEKINTÉS
-   ============================================================ */
+NAPI ÁTTEKINTÉS
+============================================================ */
 
 class _DailyOverview extends StatelessWidget {
   final DateTime selectedDate;
@@ -1325,14 +1333,14 @@ class _DailyOverview extends StatelessWidget {
   // ------------------------------------------------------------
 
   String _calculateWorkedTime(
-      String checkIn,
-      String checkOut,
+      String startTime,
+      String endTime,
       ) {
     final start =
-    _timeToMinutes(checkIn);
+    _timeToMinutes(startTime);
 
     var end =
-    _timeToMinutes(checkOut);
+    _timeToMinutes(endTime);
 
     if (end < start) {
       end += 24 * 60;
@@ -1349,43 +1357,6 @@ class _DailyOverview extends StatelessWidget {
 
     return "$hours óra "
         "${minutes.toString().padLeft(2, '0')} perc";
-  }
-
-  // ------------------------------------------------------------
-  // TÚLÓRA KISZÁMÍTÁSA
-  // ------------------------------------------------------------
-
-  String _calculateOvertime(
-      String overtimeStart,
-      String overtimeEnd,
-      ) {
-    final start =
-    _timeToMinutes(overtimeStart);
-
-    var end =
-    _timeToMinutes(overtimeEnd);
-
-    if (end < start) {
-      end += 24 * 60;
-    }
-
-    final difference =
-        end - start;
-
-    final hours =
-        difference ~/ 60;
-
-    final minutes =
-        difference % 60;
-
-    if (minutes == 0) {
-      return "$overtimeStart - $overtimeEnd "
-          "($hours óra)";
-    }
-
-    return "$overtimeStart - $overtimeEnd "
-        "($hours óra "
-        "${minutes.toString().padLeft(2, '0')} perc)";
   }
 
   @override
@@ -1575,33 +1546,34 @@ class _DailyOverview extends StatelessWidget {
           }
 
           // --------------------------------------------------
-          // TÚLÓRA
+          // TÚLÓRA ADATOK
           // --------------------------------------------------
 
-          String overtimeText =
+          final hasOvertime =
+              data["overtimeDecision"] == true;
+
+          final overtimeStart =
+          data["overtimeStart"]
+              ?.toString();
+
+          final overtimeEnd =
+          data["overtimeEnd"]
+              ?.toString();
+
+          String overtimeWorkedTime =
               "Nincs";
 
-          if (data["overtimeDecision"] == true) {
+          if (hasOvertime &&
+              overtimeStart != null &&
+              overtimeEnd != null &&
+              overtimeStart.isNotEmpty &&
+              overtimeEnd.isNotEmpty) {
 
-            final overtimeStart =
-            data["overtimeStart"]
-                ?.toString();
-
-            final overtimeEnd =
-            data["overtimeEnd"]
-                ?.toString();
-
-            if (overtimeStart != null &&
-                overtimeEnd != null &&
-                overtimeStart.isNotEmpty &&
-                overtimeEnd.isNotEmpty) {
-
-              overtimeText =
-                  _calculateOvertime(
-                    overtimeStart,
-                    overtimeEnd,
-                  );
-            }
+            overtimeWorkedTime =
+                _calculateWorkedTime(
+                  overtimeStart,
+                  overtimeEnd,
+                );
           }
 
           // --------------------------------------------------
@@ -1659,7 +1631,46 @@ class _DailyOverview extends StatelessWidget {
               ),
 
               // ------------------------------------------------
-              // TÚLÓRA
+              // TÚLÓRA KEZDETE
+              // ------------------------------------------------
+
+              _InfoRow(
+                icon: Icons.play_arrow,
+
+                iconColor:
+                const Color(0xFFE85D04),
+
+                title: "Túlóra kezdete",
+
+                value:
+                hasOvertime &&
+                    overtimeStart != null &&
+                    overtimeStart.isNotEmpty
+                    ? overtimeStart
+                    : "-",
+              ),
+
+              // ------------------------------------------------
+              // TÚLÓRA VÉGE
+              // ------------------------------------------------
+
+              _InfoRow(
+                icon: Icons.stop,
+
+                iconColor:
+                const Color(0xFFD64545),
+
+                title: "Túlóra vége",
+
+                value:
+                hasOvertime
+                    ? overtimeEnd ??
+                    "Még dolgozik"
+                    : "-",
+              ),
+
+              // ------------------------------------------------
+              // LEDOLGOZOTT TÚLÓRA
               // ------------------------------------------------
 
               _InfoRow(
@@ -1668,9 +1679,9 @@ class _DailyOverview extends StatelessWidget {
                 iconColor:
                 const Color(0xFFE85D04),
 
-                title: "Túlóra",
+                title: "Ledolgozott túlóra",
 
-                value: overtimeText,
+                value: overtimeWorkedTime,
               ),
 
               // ------------------------------------------------
@@ -6987,15 +6998,758 @@ class _ProjectListCard extends StatelessWidget {
   }
 }
 
-class MorePage
-    extends StatelessWidget {
-  final Future<void> Function()?
-  onLogout;
+class MorePage extends StatelessWidget {
+  final Future<void> Function()? onLogout;
 
   const MorePage({
     super.key,
     this.onLogout,
   });
+
+  // ============================================================
+  // HÓNAP KIVÁLASZTÁSA
+  // ============================================================
+
+  Future<void> _selectMonth(BuildContext context) async {
+    final now = DateTime.now();
+
+    int selectedYear = now.year;
+    int selectedMonth = now.month;
+
+    final result = await showDialog<DateTime>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(
+                "Ledolgozott órák",
+              ),
+
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    "Válaszd ki a letölteni kívánt hónapot.",
+                  ),
+
+                  const SizedBox(
+                    height: 20,
+                  ),
+
+                  Row(
+                    mainAxisAlignment:
+                    MainAxisAlignment.center,
+                    children: [
+                      // ------------------------------------------------
+                      // ÉV
+                      // ------------------------------------------------
+
+                      DropdownButton<int>(
+                        value: selectedYear,
+
+                        items: List.generate(
+                          10,
+                              (index) {
+                            final year =
+                                now.year - 5 + index;
+
+                            return DropdownMenuItem<int>(
+                              value: year,
+                              child: Text(
+                                year.toString(),
+                              ),
+                            );
+                          },
+                        ),
+
+                        onChanged: (value) {
+                          if (value == null) return;
+
+                          setDialogState(() {
+                            selectedYear = value;
+                          });
+                        },
+                      ),
+
+                      const SizedBox(
+                        width: 15,
+                      ),
+
+                      // ------------------------------------------------
+                      // HÓNAP
+                      // ------------------------------------------------
+
+                      DropdownButton<int>(
+                        value: selectedMonth,
+
+                        items: List.generate(
+                          12,
+                              (index) {
+                            final month = index + 1;
+
+                            return DropdownMenuItem<int>(
+                              value: month,
+                              child: Text(
+                                "$month. hónap",
+                              ),
+                            );
+                          },
+                        ),
+
+                        onChanged: (value) {
+                          if (value == null) return;
+
+                          setDialogState(() {
+                            selectedMonth = value;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+
+                  child: const Text(
+                    "Mégse",
+                  ),
+                ),
+
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pop(
+                      DateTime(
+                        selectedYear,
+                        selectedMonth,
+                      ),
+                    );
+                  },
+
+                  icon: const Icon(
+                    Icons.download,
+                  ),
+
+                  label: const Text(
+                    "Excel készítése",
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    await _generateExcel(
+      context,
+      result.year,
+      result.month,
+    );
+  }
+
+  // ============================================================
+  // IDŐ → PERC
+  // ============================================================
+
+  int _timeToMinutes(String? time) {
+    if (time == null || time.isEmpty) {
+      return 0;
+    }
+
+    final parts = time.split(":");
+
+    if (parts.length != 2) {
+      return 0;
+    }
+
+    final hour =
+        int.tryParse(parts[0]) ?? 0;
+
+    final minute =
+        int.tryParse(parts[1]) ?? 0;
+
+    return hour * 60 + minute;
+  }
+
+  // ============================================================
+  // PERC → ÓRA:PP
+  // ============================================================
+
+  String _minutesToTime(int minutes) {
+    final hours = minutes ~/ 60;
+    final mins = minutes % 60;
+
+    return "$hours:${mins.toString().padLeft(2, '0')}";
+  }
+
+  // ============================================================
+  // IDŐKÜLÖNBSÉG
+  // ============================================================
+
+  int _calculateMinutes(
+      String? start,
+      String? end,
+      ) {
+    if (start == null ||
+        end == null ||
+        start.isEmpty ||
+        end.isEmpty) {
+      return 0;
+    }
+
+    final startMinutes =
+    _timeToMinutes(start);
+
+    var endMinutes =
+    _timeToMinutes(end);
+
+    if (endMinutes < startMinutes) {
+      endMinutes += 24 * 60;
+    }
+
+    return endMinutes - startMinutes;
+  }
+
+  // ============================================================
+  // EXCEL GENERÁLÁSA
+  // ============================================================
+
+  Future<void> _generateExcel(
+      BuildContext context,
+      int year,
+      int month,
+      ) async {
+    final firestore =
+        FirebaseFirestore.instance;
+
+    try {
+      // ----------------------------------------------------------
+      // BETÖLTÉS JELZÉSE
+      // ----------------------------------------------------------
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+
+                SizedBox(
+                  width: 20,
+                ),
+
+                Expanded(
+                  child: Text(
+                    "Excel készítése...",
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+
+      // ----------------------------------------------------------
+      // DOLGOZÓK
+      // ----------------------------------------------------------
+
+      final usersSnapshot =
+      await firestore
+          .collection("users")
+          .get();
+
+      final users =
+      usersSnapshot.docs.toList();
+
+      if (users.isEmpty) {
+        if (context.mounted) {
+          Navigator.of(context).pop();
+
+          ScaffoldMessenger.of(context)
+              .showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Nincs dolgozó az adatbázisban.",
+              ),
+            ),
+          );
+        }
+
+        return;
+      }
+
+      // ----------------------------------------------------------
+      // EXCEL
+      // ----------------------------------------------------------
+
+      final excel = excel2.Excel.createExcel();
+
+      final sheet =
+      excel["Munkaidő"];
+
+      // ----------------------------------------------------------
+      // DOLGOZÓK RENDEZÉSE
+      // ----------------------------------------------------------
+
+      users.sort(
+            (a, b) {
+          final nameA =
+          (a.data()["name"] ??
+              a.data()["displayName"] ??
+              a.data()["email"] ??
+              "")
+              .toString();
+
+          final nameB =
+          (b.data()["name"] ??
+              b.data()["displayName"] ??
+              b.data()["email"] ??
+              "")
+              .toString();
+
+          return nameA.compareTo(nameB);
+        },
+      );
+
+      // ----------------------------------------------------------
+      // FEJLÉC
+      // ----------------------------------------------------------
+
+      final headerRow =
+      <excel2.CellValue>[];
+
+      headerRow.add(
+        excel2.TextCellValue(
+          "Dátum",
+        ),
+      );
+
+      for (final user in users) {
+        final data =
+        user.data();
+
+        final name =
+        (data["name"] ??
+            data["displayName"] ??
+            data["email"] ??
+            "Ismeretlen")
+            .toString();
+
+        headerRow.add(
+          excel2.TextCellValue(
+            "$name - Projekt",
+          ),
+        );
+
+        headerRow.add(
+          excel2.TextCellValue(
+            "$name - Rendes idő",
+          ),
+        );
+
+        headerRow.add(
+          excel2.TextCellValue(
+            "$name - Túlóra",
+          ),
+        );
+      }
+
+      sheet.appendRow(
+        headerRow,
+      );
+
+      // ----------------------------------------------------------
+// OSZLOPSZÉLESSÉGEK
+// ----------------------------------------------------------
+
+// Dátum oszlop
+      sheet.setColumnWidth(
+        0,
+        15,
+      );
+
+// Minden dolgozóhoz 3 oszlop
+      for (int i = 0; i < users.length; i++) {
+        final baseColumn = 1 + (i * 3);
+
+        // Projekt
+        sheet.setColumnWidth(
+          baseColumn,
+          25,
+        );
+
+        // Rendes idő
+        sheet.setColumnWidth(
+          baseColumn + 1,
+          18,
+        );
+
+        // Túlóra
+        sheet.setColumnWidth(
+          baseColumn + 2,
+          15,
+        );
+      }
+
+      // ----------------------------------------------------------
+      // HÓNAP NAPJAI
+      // ----------------------------------------------------------
+
+      final daysInMonth =
+          DateTime(
+            year,
+            month + 1,
+            0,
+          ).day;
+
+      // ----------------------------------------------------------
+      // ÖSSZESÍTŐK
+      // ----------------------------------------------------------
+
+      final normalTotals =
+      List<int>.filled(
+        users.length,
+        0,
+      );
+
+      final overtimeTotals =
+      List<int>.filled(
+        users.length,
+        0,
+      );
+
+      // ----------------------------------------------------------
+      // MINDEN NAP
+      // ----------------------------------------------------------
+
+      for (int day = 1;
+      day <= daysInMonth;
+      day++) {
+        final date =
+        DateTime(
+          year,
+          month,
+          day,
+        );
+
+        final dateString =
+            "${year.toString().padLeft(4, '0')}-"
+            "${month.toString().padLeft(2, '0')}-"
+            "${day.toString().padLeft(2, '0')}";
+
+        final row =
+        <excel2.CellValue>[];
+
+        row.add(
+          excel2.TextCellValue(
+            dateString,
+          ),
+        );
+
+        // --------------------------------------------------------
+        // MINDEN DOLGOZÓ
+        // --------------------------------------------------------
+
+        for (int i = 0;
+        i < users.length;
+        i++) {
+          final user =
+          users[i];
+
+          final checkinSnapshot =
+          await firestore
+              .collection("users")
+              .doc(user.id)
+              .collection("checkins")
+              .doc(dateString)
+              .get();
+
+          if (!checkinSnapshot.exists) {
+            row.add(
+              excel2.TextCellValue("-"),
+            );
+
+            row.add(
+              excel2.TextCellValue("0:00"),
+            );
+
+            row.add(
+              excel2.TextCellValue("0:00"),
+            );
+
+            continue;
+          }
+
+          final data =
+              checkinSnapshot.data() ?? {};
+
+          final project =
+              data["project"]
+                  ?.toString() ??
+                  "";
+
+          final checkIn =
+          data["checkInTime"]
+              ?.toString();
+
+          final checkOut =
+          data["checkOutTime"]
+              ?.toString();
+
+          final overtimeDecision =
+              data["overtimeDecision"] == true;
+
+          final overtimeStart =
+          data["overtimeStart"]
+              ?.toString();
+
+          final overtimeEnd =
+          data["overtimeEnd"]
+              ?.toString();
+
+          // ------------------------------------------------------
+          // SZABADSÁG
+          // ------------------------------------------------------
+
+          if (project == "Szabi") {
+            row.add(
+              excel2.TextCellValue(
+                "SZABADSÁG",
+              ),
+            );
+
+            row.add(
+              excel2.TextCellValue(
+                "0:00",
+              ),
+            );
+
+            row.add(
+              excel2.TextCellValue(
+                "0:00",
+              ),
+            );
+
+            continue;
+          }
+
+          // ------------------------------------------------------
+          // TÚLÓRA KEZDŐDIK 16:00-KOR
+          // ------------------------------------------------------
+
+          int overtimeMinutes = 0;
+
+          if (overtimeDecision &&
+              overtimeStart != null &&
+              overtimeEnd != null) {
+            overtimeMinutes =
+                _calculateMinutes(
+                  overtimeStart,
+                  overtimeEnd,
+                );
+          }
+
+          // ------------------------------------------------------
+          // RENDES MUNKAIDŐ
+          // ------------------------------------------------------
+
+          int normalMinutes = 0;
+
+          if (checkIn != null &&
+              checkOut != null) {
+            normalMinutes =
+                _calculateMinutes(
+                  checkIn,
+                  checkOut,
+                );
+          }
+
+          normalTotals[i] +=
+              normalMinutes;
+
+          overtimeTotals[i] +=
+              overtimeMinutes;
+
+          // ------------------------------------------------------
+          // PROJEKT
+          // ------------------------------------------------------
+
+          row.add(
+            excel2.TextCellValue(
+              project.isNotEmpty
+                  ? project
+                  : "-",
+            ),
+          );
+
+          // ------------------------------------------------------
+          // RENDES IDŐ
+          // ------------------------------------------------------
+
+          row.add(
+            excel2.TextCellValue(
+              _minutesToTime(
+                normalMinutes,
+              ),
+            ),
+          );
+
+          // ------------------------------------------------------
+          // TÚLÓRA
+          // ------------------------------------------------------
+
+          row.add(
+            excel2.TextCellValue(
+              _minutesToTime(
+                overtimeMinutes,
+              ),
+            ),
+          );
+        }
+
+        sheet.appendRow(
+          row,
+        );
+      }
+
+      // ----------------------------------------------------------
+      // ÜRES SOR
+      // ----------------------------------------------------------
+
+      sheet.appendRow(
+        [],
+      );
+
+      // ----------------------------------------------------------
+      // ÖSSZESÍTŐ
+      // ----------------------------------------------------------
+
+      final totalRow =
+      <excel2.CellValue>[];
+
+      totalRow.add(
+        excel2.TextCellValue(
+          "ÖSSZESEN",
+        ),
+      );
+
+      for (int i = 0;
+      i < users.length;
+      i++) {
+        totalRow.add(
+          excel2.TextCellValue(
+            "",
+          ),
+        );
+
+        totalRow.add(
+          excel2.TextCellValue(
+            _minutesToTime(
+              normalTotals[i],
+            ),
+          ),
+        );
+
+        totalRow.add(
+          excel2.TextCellValue(
+            _minutesToTime(
+              overtimeTotals[i],
+            ),
+          ),
+        );
+      }
+
+      sheet.appendRow(
+        totalRow,
+      );
+
+      // ----------------------------------------------------------
+// EXCEL FÁJL LETÖLTÉSE CHROME-BAN
+// ----------------------------------------------------------
+
+      final bytes = excel.encode();
+
+      if (bytes == null) {
+        throw Exception(
+          "Nem sikerült létrehozni az Excel fájlt.",
+        );
+      }
+
+      final fileName =
+          "munkaido_${year}_"
+          "${month.toString().padLeft(2, '0')}.xlsx";
+
+      final blob = html.Blob(
+        [bytes],
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+
+      final url =
+      html.Url.createObjectUrlFromBlob(blob);
+
+      final anchor =
+      html.AnchorElement(href: url)
+        ..setAttribute(
+          'download',
+          fileName,
+        )
+        ..click();
+
+      html.Url.revokeObjectUrl(url);
+
+// ----------------------------------------------------------
+// BETÖLTŐ ABLAK BEZÁRÁSA
+// ----------------------------------------------------------
+
+      if (context.mounted) {
+        Navigator.of(context).pop();
+
+        ScaffoldMessenger.of(context)
+            .showSnackBar(
+          SnackBar(
+            content: Text(
+              "Az Excel sikeresen letöltődött: $fileName",
+            ),
+          ),
+        );
+      }
+
+    } catch (e) {
+      // --------------------------------------------------------
+      // HIBA
+      // --------------------------------------------------------
+
+      if (context.mounted) {
+        Navigator.of(context).pop();
+
+        ScaffoldMessenger.of(context)
+            .showSnackBar(
+          SnackBar(
+            backgroundColor:
+            Colors.red,
+
+            content: Text(
+              "Nem sikerült elkészíteni az Excelt: $e",
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  // ============================================================
+  // UI
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -7010,32 +7764,31 @@ class MorePage
         foregroundColor:
         Colors.white,
 
-        title:
-        const Text("Több"),
+        title: const Text(
+          "Több",
+        ),
       ),
 
       body: Center(
         child: Column(
           mainAxisAlignment:
-          MainAxisAlignment
-              .center,
+          MainAxisAlignment.center,
 
           children: [
             const Icon(
               Icons.more_horiz,
               size: 60,
-              color:
-              Color(0xFF1976E8),
+              color: Color(0xFF1976E8),
             ),
 
             const SizedBox(
-                height: 15),
+              height: 15,
+            ),
 
             const Text(
               "Több",
 
-              style:
-              TextStyle(
+              style: TextStyle(
                 fontSize: 24,
                 fontWeight:
                 FontWeight.bold,
@@ -7043,7 +7796,60 @@ class MorePage
             ),
 
             const SizedBox(
-                height: 30),
+              height: 30,
+            ),
+
+            // ==================================================
+            // LEDOLGOZOTT ÓRÁK
+            // ==================================================
+
+            SizedBox(
+              width: 260,
+              height: 52,
+
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  _selectMonth(
+                    context,
+                  );
+                },
+
+                icon: const Icon(
+                  Icons.download,
+                ),
+
+                label: const Text(
+                  "Ledolgozott órák",
+                ),
+
+                style:
+                ElevatedButton.styleFrom(
+                  backgroundColor:
+                  const Color(
+                    0xFF1976E8,
+                  ),
+
+                  foregroundColor:
+                  Colors.white,
+
+                  shape:
+                  RoundedRectangleBorder(
+                    borderRadius:
+                    BorderRadius.circular(
+                      10,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(
+              height: 15,
+            ),
+
+            // ==================================================
+            // KIJELENTKEZÉS
+            // ==================================================
 
             ElevatedButton.icon(
               onPressed:
@@ -7053,13 +7859,11 @@ class MorePage
                 await onLogout!();
               },
 
-              icon:
-              const Icon(
+              icon: const Icon(
                 Icons.logout,
               ),
 
-              label:
-              const Text(
+              label: const Text(
                 "Kijelentkezés",
               ),
             ),
@@ -7074,8 +7878,7 @@ class MorePage
    SIMPLE PAGE
    ============================================================ */
 
-class _SimplePage
-    extends StatelessWidget {
+class _SimplePage extends StatelessWidget {
   final String title;
   final IconData icon;
 
@@ -7097,34 +7900,31 @@ class _SimplePage
         foregroundColor:
         Colors.white,
 
-        title:
-        Text(title),
+        title: Text(title),
       ),
 
       body: Center(
         child: Column(
           mainAxisAlignment:
-          MainAxisAlignment
-              .center,
+          MainAxisAlignment.center,
 
           children: [
             Icon(
               icon,
               size: 60,
-              color:
-              const Color(
+              color: const Color(
                 0xFF1976E8,
               ),
             ),
 
             const SizedBox(
-                height: 15),
+              height: 15,
+            ),
 
             Text(
               title,
 
-              style:
-              const TextStyle(
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight:
                 FontWeight.bold,
