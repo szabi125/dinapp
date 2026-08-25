@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart' as excel2;
-import 'dart:html' as html;
+import 'package:file_saver/file_saver.dart';
+import 'dart:typed_data';
 
 
 import 'package:flutter/material.dart';
@@ -771,6 +772,14 @@ class _WelcomeSection
    STATISTICS - FIRESTORE
    ============================================================ */
 
+/* ============================================================
+   STATISZTIKÁK
+   ============================================================ */
+
+/* ============================================================
+   STATISZTIKÁK
+   ============================================================ */
+
 class _StatsGrid extends StatelessWidget {
   const _StatsGrid();
 
@@ -782,50 +791,229 @@ class _StatsGrid extends StatelessWidget {
         "${now.day.toString().padLeft(2, '0')}";
   }
 
-  // ------------------------------------------------------------
-  // IDŐ KÜLÖNBSÉG ÓRÁBAN
-  // ------------------------------------------------------------
+  String _formatHours(double hours) {
+    final totalMinutes = (hours * 60).round();
 
-  double calculateHours(
+    final h = totalMinutes ~/ 60;
+    final m = totalMinutes % 60;
+
+    if (m == 0) {
+      return "$h ó";
+    }
+
+    return "$h ó ${m.toString().padLeft(2, '0')} p";
+  }
+
+  int _timeToMinutes(String time) {
+    final parts = time.split(":");
+
+    if (parts.length < 2) {
+      return 0;
+    }
+
+    final hour = int.tryParse(parts[0]) ?? 0;
+    final minute = int.tryParse(parts[1]) ?? 0;
+
+    return hour * 60 + minute;
+  }
+
+  double _calculateHours(
       String checkIn,
       String checkOut,
       ) {
-    try {
-      final inParts = checkIn.split(":");
-      final outParts = checkOut.split(":");
+    var start = _timeToMinutes(checkIn);
+    var end = _timeToMinutes(checkOut);
 
-      final inMinutes =
-          int.parse(inParts[0]) * 60 +
-              int.parse(inParts[1]);
-
-      final outMinutes =
-          int.parse(outParts[0]) * 60 +
-              int.parse(outParts[1]);
-
-      int difference =
-          outMinutes - inMinutes;
-
-      // Ha esetleg éjfél után történt a kicsekkolás
-      if (difference < 0) {
-        difference += 24 * 60;
-      }
-
-      return difference / 60.0;
-    } catch (e) {
-      return 0;
+    if (end < start) {
+      end += 24 * 60;
     }
+
+    return (end - start) / 60.0;
   }
 
-  // ------------------------------------------------------------
-  // ÖSSZES MAI LEDOLGOZOTT ÓRA
-  // ------------------------------------------------------------
+  /* ============================================================
+     AKTUÁLIS FELHASZNÁLÓ HAVI LEDOLGOZOTT ÓRÁI (TÚLÓRÁVAL EGYÜTT)
+     ============================================================ */
 
-  Future<double> getTodayWorkedHours(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> users,
-      ) async {
-    double totalHours = 0;
+  Future<double> _getMonthlyWorkedHours() async {
+    final user = FirebaseAuth.instance.currentUser;
 
-    final futures = users.map((user) async {
+    if (user == null) {
+      return 0;
+    }
+
+    final now = DateTime.now();
+
+    final firstDay = DateTime(
+      now.year,
+      now.month,
+      1,
+    );
+
+    final nextMonth = DateTime(
+      now.year,
+      now.month + 1,
+      1,
+    );
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(user.uid)
+        .collection("checkins")
+        .get();
+
+    int totalMinutes = 0;
+
+    for (final document in snapshot.docs) {
+      final data = document.data();
+
+      /* ==========================================================
+       DÁTUM ELLENŐRZÉSE
+       ========================================================== */
+
+      DateTime? date;
+
+      try {
+        final parts = document.id.split("-");
+
+        if (parts.length != 3) {
+          continue;
+        }
+
+        date = DateTime(
+          int.parse(parts[0]),
+          int.parse(parts[1]),
+          int.parse(parts[2]),
+        );
+      } catch (_) {
+        continue;
+      }
+
+      // Csak az aktuális hónapot számoljuk
+      if (date.isBefore(firstDay) ||
+          !date.isBefore(nextMonth)) {
+        continue;
+      }
+
+      /* ==========================================================
+       NORMÁL MUNKAIDŐ
+       ========================================================== */
+
+      final checkIn =
+      data["checkInTime"]?.toString().trim();
+
+      final checkOut =
+      data["checkOutTime"]?.toString().trim();
+
+      if (checkIn == null ||
+          checkOut == null ||
+          checkIn.isEmpty ||
+          checkOut.isEmpty) {
+        continue;
+      }
+
+      int normalStart =
+      _timeToMinutes(checkIn);
+
+      int normalEnd =
+      _timeToMinutes(checkOut);
+
+      if (normalEnd < normalStart) {
+        normalEnd += 24 * 60;
+      }
+
+      final normalMinutes =
+          normalEnd - normalStart;
+
+      totalMinutes += normalMinutes;
+
+      /* ==========================================================
+       TÚLÓRA
+       ========================================================== */
+
+      final overtimeDecision =
+      data["overtimeDecision"];
+
+      final overtimeStart =
+      data["overtimeStart"]?.toString().trim();
+
+      final overtimeEnd =
+      data["overtimeEnd"]?.toString().trim();
+
+      /*
+     * Csak akkor adjuk hozzá a túlórát,
+     * ha a dolgozó túlórázott és
+     * mindkét túlóra időpont rendelkezésre áll.
+     */
+
+      if (overtimeDecision == true &&
+          overtimeStart != null &&
+          overtimeEnd != null &&
+          overtimeStart.isNotEmpty &&
+          overtimeEnd.isNotEmpty) {
+        int overtimeStartMinutes =
+        _timeToMinutes(overtimeStart);
+
+        int overtimeEndMinutes =
+        _timeToMinutes(overtimeEnd);
+
+        if (overtimeEndMinutes <
+            overtimeStartMinutes) {
+          overtimeEndMinutes += 24 * 60;
+        }
+
+        final overtimeMinutes =
+            overtimeEndMinutes -
+                overtimeStartMinutes;
+
+        totalMinutes += overtimeMinutes;
+      }
+    }
+
+    return totalMinutes / 60.0;
+  }
+
+  /* ============================================================
+     AKTÍV PROJEKTEK SZÁMA
+     ============================================================ */
+
+  Future<int> _getActiveProjectCount() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection("projects")
+        .get();
+
+    int count = 0;
+
+    for (final project in snapshot.docs) {
+      if (project.id == "Szabi") {
+        continue;
+      }
+
+      final data = project.data();
+
+      final workers =
+      (data["Munkások száma"] ?? 0) as num;
+
+      if (workers > 0) {
+        count++;
+      }
+    }
+
+    return count;
+  }
+
+  /* ============================================================
+     MA JELENLÉVŐ DOLGOZÓK SZÁMA
+     ============================================================ */
+
+  Future<int> _getTodayPresentCount() async {
+    final users = await FirebaseFirestore.instance
+        .collection("users")
+        .get();
+
+    int count = 0;
+
+    for (final user in users.docs) {
       final checkin = await FirebaseFirestore.instance
           .collection("users")
           .doc(user.id)
@@ -834,57 +1022,37 @@ class _StatsGrid extends StatelessWidget {
           .get();
 
       if (!checkin.exists) {
-        return 0.0;
+        continue;
       }
 
       final data = checkin.data();
 
-      final checkInTime =
+      final project =
+      data?["project"]?.toString();
+
+      final checkIn =
       data?["checkInTime"]?.toString();
 
-      final checkOutTime =
+      final checkOut =
       data?["checkOutTime"]?.toString();
 
-      if (checkInTime == null ||
-          checkOutTime == null) {
-        return 0.0;
+      if (project == "Szabi") {
+        continue;
       }
 
-      return calculateHours(
-        checkInTime,
-        checkOutTime,
-      );
-    });
-
-    final results = await Future.wait(futures);
-
-    for (final hours in results) {
-      totalHours += hours;
+      if (checkIn != null &&
+          checkIn.isNotEmpty &&
+          (checkOut == null || checkOut.isEmpty)) {
+        count++;
+      }
     }
 
-    return totalHours;
+    return count;
   }
 
-  // ------------------------------------------------------------
-  // ÓRÁK FORMÁZÁSA
-  // ------------------------------------------------------------
-
-  String formatHours(double hours) {
-    final totalMinutes =
-    (hours * 60).round();
-
-    final h =
-        totalMinutes ~/ 60;
-
-    final m =
-        totalMinutes % 60;
-
-    if (m == 0) {
-      return "$h ó";
-    }
-
-    return "$h ó ${m.toString().padLeft(2, '0')} p";
-  }
+  /* ============================================================
+     BUILD
+     ============================================================ */
 
   @override
   Widget build(BuildContext context) {
@@ -926,176 +1094,149 @@ class _StatsGrid extends StatelessWidget {
         final users =
             userSnapshot.data?.docs ?? [];
 
-        final workerCount =
-            users.length;
+        final workerCount = users.length;
 
-        return FutureBuilder<
-            QuerySnapshot<Map<String, dynamic>>>(
-          future: FirebaseFirestore.instance
-              .collection("projects")
-              .get(),
+        return FutureBuilder<int>(
+          future: _getTodayPresentCount(),
 
-          builder: (context, projectSnapshot) {
-            int activeProjectCount = 0;
+          builder: (context, presentSnapshot) {
+            final presentCount =
+                presentSnapshot.data ?? 0;
 
-            if (projectSnapshot.hasData) {
-              final projects =
-                  projectSnapshot.data!.docs;
-
-              activeProjectCount = projects
-                  .where((project) {
-                if (project.id == "Szabi") {
-                  return false;
-                }
-
-                final data =
-                project.data();
-
-                final workers =
-                (data["Munkások száma"] ?? 0)
-                as num;
-
-                return workers > 0;
-              })
-                  .length;
-            }
+            final attendancePercentage =
+            workerCount > 0
+                ? presentCount / workerCount
+                : 0.0;
 
             return FutureBuilder<double>(
-              future: getTodayWorkedHours(users),
+              future: _getMonthlyWorkedHours(),
 
-              builder: (
-                  context,
-                  hoursSnapshot,
-                  ) {
-                final workedHours =
+              builder: (context, hoursSnapshot) {
+                final monthlyHours =
                     hoursSnapshot.data ?? 0;
 
-                return FutureBuilder<
-                    List<
-                        DocumentSnapshot<
-                            Map<String, dynamic>>>>
-                  (
-                  future: Future.wait(
-                    users.map(
-                          (user) {
-                        return FirebaseFirestore
-                            .instance
-                            .collection("users")
-                            .doc(user.id)
-                            .collection("checkins")
-                            .doc(today)
-                            .get();
-                      },
-                    ),
-                  ),
+                return FutureBuilder<int>(
+                  future: _getActiveProjectCount(),
 
                   builder: (
                       context,
-                      attendanceSnapshot,
+                      projectSnapshot,
                       ) {
-                    int presentCount = 0;
-
-                    if (attendanceSnapshot.hasData) {
-                      presentCount =
-                          attendanceSnapshot
-                              .data!
-                              .where(
-                                (doc) => doc.exists,
-                          )
-                              .length;
-                    }
-
-                    final attendancePercentage =
-                    workerCount > 0
-                        ? presentCount /
-                        workerCount
-                        : 0.0;
+                    final activeProjectCount =
+                        projectSnapshot.data ?? 0;
 
                     return Row(
                       children: [
-                        // =================================================
-                        // DOLGOZÓK
-                        // =================================================
+
+                        /* ==================================================
+                           DOLGOZÓK
+                           ================================================== */
 
                         Expanded(
-                          child: _StatCard(
-                            icon:
-                            Icons.people_outline,
-                            color:
-                            const Color(
-                              0xFF1269DC,
-                            ),
-                            title: "Dolgozók",
-                            value:
-                            "$workerCount fő",
-                            subtitle:
-                            "Adatbázisban",
-                            progress:
-                            workerCount > 0
-                                ? 1.0
-                                : 0.0,
-                          ),
-                        ),
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                  const _AllEmployeesPage(
+                                    onlyPresent: false,
+                                  ),
+                                ),
+                              );
+                            },
 
-                        const SizedBox(
-                          width: 7,
-                        ),
+                            child: _StatCard(
+                              icon: Icons.people_outline,
 
-                        // =================================================
-                        // MAI JELENLÉT
-                        // =================================================
+                              color:
+                              const Color(0xFF1269DC),
 
-                        Expanded(
-                          child: _StatCard(
-                            icon: Icons
-                                .calendar_month_outlined,
-                            color:
-                            const Color(
-                              0xFF22A76A,
-                            ),
-                            title:
-                            "Mai jelenlét",
-                            value:
-                            "$presentCount fő",
-                            subtitle:
-                            "${(attendancePercentage * 100).round()}% jelenlét",
-                            progress:
-                            attendancePercentage
-                                .clamp(
-                              0.0,
-                              1.0,
+                              title: "Dolgozók",
+
+                              value:
+                              "$workerCount fő",
+
+                              subtitle:
+                              "Összes dolgozó",
+
+                              progress:
+                              workerCount > 0
+                                  ? 1.0
+                                  : 0.0,
                             ),
                           ),
                         ),
 
-                        const SizedBox(
-                          width: 7,
+                        const SizedBox(width: 7),
+
+                        /* ==================================================
+                           MAI JELENLÉT
+                           ================================================== */
+
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                  const _AllEmployeesPage(
+                                    onlyPresent: true,
+                                  ),
+                                ),
+                              );
+                            },
+
+                            child: _StatCard(
+                              icon:
+                              Icons.calendar_month_outlined,
+
+                              color:
+                              const Color(0xFF22A76A),
+
+                              title:
+                              "Mai jelenlét",
+
+                              value:
+                              "$presentCount fő",
+
+                              subtitle:
+                              "${(attendancePercentage * 100).round()}% jelenlét",
+
+                              progress:
+                              attendancePercentage
+                                  .clamp(0.0, 1.0),
+                            ),
+                          ),
                         ),
 
-                        // =================================================
-                        // LEDOLGOZOTT ÓRÁK
-                        // =================================================
+                        const SizedBox(width: 7),
+
+                        /* ==================================================
+                           HAVI LEDOLGOZOTT ÓRÁK
+                           ================================================== */
 
                         Expanded(
                           child: _StatCard(
                             icon:
                             Icons.access_time,
+
                             color:
-                            const Color(
-                              0xFFF28A18,
-                            ),
+                            const Color(0xFFF28A18),
+
                             title:
                             "Ledolgozott órák",
+
                             value:
-                            formatHours(
-                              workedHours,
+                            _formatHours(
+                              monthlyHours,
                             ),
+
                             subtitle:
-                            "Mai összesített",
+                            "Ebben a hónapban",
+
                             progress:
-                            workedHours > 0
-                                ? (workedHours /
-                                8)
+                            monthlyHours > 0
+                                ? (monthlyHours / 160)
                                 .clamp(
                               0.0,
                               1.0,
@@ -1104,32 +1245,44 @@ class _StatsGrid extends StatelessWidget {
                           ),
                         ),
 
-                        const SizedBox(
-                          width: 7,
-                        ),
+                        const SizedBox(width: 7),
 
-                        // =================================================
-                        // AKTÍV PROJEKTEK
-                        // =================================================
+                        /* ==================================================
+                           AKTÍV PROJEKTEK
+                           ================================================== */
 
                         Expanded(
-                          child: _StatCard(
-                            icon: Icons
-                                .assignment_outlined,
-                            color:
-                            const Color(
-                              0xFF8543D8,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                  const _ActiveProjectsPage(),
+                                ),
+                              );
+                            },
+
+                            child: _StatCard(
+                              icon:
+                              Icons.assignment_outlined,
+
+                              color:
+                              const Color(0xFF8543D8),
+
+                              title:
+                              "Aktív projektek",
+
+                              value:
+                              "$activeProjectCount db",
+
+                              subtitle:
+                              "Jelenleg dolgoznak rajta",
+
+                              progress:
+                              activeProjectCount > 0
+                                  ? 1.0
+                                  : 0.0,
                             ),
-                            title:
-                            "Aktív projektek",
-                            value:
-                            "$activeProjectCount db",
-                            subtitle:
-                            "Folyamatban lévő",
-                            progress:
-                            activeProjectCount > 0
-                                ? 1.0
-                                : 0.0,
                           ),
                         ),
                       ],
@@ -1141,6 +1294,489 @@ class _StatsGrid extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+
+/* ============================================================
+   ÖSSZES DOLGOZÓ / MA JELENLÉVŐ DOLGOZÓK
+   ============================================================ */
+
+class _AllEmployeesPage extends StatelessWidget {
+  final bool onlyPresent;
+  final DateTime? selectedDate;
+
+  const _AllEmployeesPage({
+    super.key,
+    this.onlyPresent = false,
+    this.selectedDate,
+  });
+
+  DateTime get _date => selectedDate ?? DateTime.now();
+
+  String get selectedDateString {
+    return "${_date.year.toString().padLeft(4, '0')}-"
+        "${_date.month.toString().padLeft(2, '0')}-"
+        "${_date.day.toString().padLeft(2, '0')}";
+  }
+
+  String get formattedDate {
+    return "${_date.year}. "
+        "${_date.month.toString().padLeft(2, '0')}. "
+        "${_date.day.toString().padLeft(2, '0')}.";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF101E2E),
+        foregroundColor: Colors.white,
+        elevation: 0,
+
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Colors.white,
+          ),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
+
+        title: Text(
+          onlyPresent
+              ? "MAI JELENLÉT"
+              : "ÖSSZES DOLGOZÓ",
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+
+        centerTitle: true,
+      ),
+
+      body: SafeArea(
+        child: StreamBuilder<
+            QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection("users")
+              .snapshots(),
+
+          builder: (context, snapshot) {
+            if (snapshot.connectionState ==
+                ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF1976E8),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    "Nem sikerült betölteni a dolgozókat:\n\n"
+                        "${snapshot.error}",
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.red,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            final allEmployees =
+                snapshot.data?.docs ?? [];
+
+            if (allEmployees.isEmpty) {
+              return const Center(
+                child: Text(
+                  "Nincs dolgozó az adatbázisban.",
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF8A9098),
+                  ),
+                ),
+              );
+            }
+
+            return FutureBuilder<
+                List<QueryDocumentSnapshot<
+                    Map<String, dynamic>>>>(
+              future: _getEmployees(
+                allEmployees,
+              ),
+
+              builder: (context, employeeSnapshot) {
+                if (employeeSnapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF1976E8),
+                    ),
+                  );
+                }
+
+                final employees =
+                    employeeSnapshot.data ?? [];
+
+                return Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      color: Colors.white,
+
+                      child: Row(
+                        children: [
+                          Icon(
+                            onlyPresent
+                                ? Icons.people_alt_outlined
+                                : Icons.calendar_today,
+                            size: 15,
+                            color:
+                            const Color(0xFF1976E8),
+                          ),
+
+                          const SizedBox(width: 8),
+
+                          Text(
+                            onlyPresent
+                                ? "Ma jelenlévő dolgozók"
+                                : "Összes dolgozó",
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF343A40),
+                            ),
+                          ),
+
+                          const Spacer(),
+
+                          Text(
+                            "${employees.length} fő",
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1976E8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    Container(
+                      height: 1,
+                      color: const Color(0xFFE5E9ED),
+                    ),
+
+                    if (employees.isEmpty)
+                      Expanded(
+                        child: Center(
+                          child: Text(
+                            onlyPresent
+                                ? "Jelenleg nincs becsekkolt dolgozó."
+                                : "Nincs dolgozó.",
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF8A9098),
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: ListView.builder(
+                          physics:
+                          const BouncingScrollPhysics(),
+
+                          padding:
+                          const EdgeInsets.fromLTRB(
+                            16,
+                            12,
+                            16,
+                            24,
+                          ),
+
+                          itemCount: employees.length,
+
+                          itemBuilder: (context, index) {
+                            final employee =
+                            employees[index];
+
+                            return Container(
+                              margin:
+                              const EdgeInsets.only(
+                                bottom: 6,
+                              ),
+
+                              padding:
+                              const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius:
+                                BorderRadius.circular(8),
+                                border: Border.all(
+                                  color:
+                                  const Color(0xFFE8ECF0),
+                                ),
+                              ),
+
+                              child:
+                              _FirestoreEmployeeRow(
+                                employeeId:
+                                employee.id,
+
+                                employeeData:
+                                employee.data(),
+
+                                selectedDate:
+                                selectedDateString,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<List<QueryDocumentSnapshot<
+      Map<String, dynamic>>>> _getEmployees(
+      List<QueryDocumentSnapshot<
+          Map<String, dynamic>>>
+      allEmployees,
+      ) async {
+    if (!onlyPresent) {
+      return allEmployees;
+    }
+
+    final result =
+    <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+    for (final employee in allEmployees) {
+      final checkin = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(employee.id)
+          .collection("checkins")
+          .doc(selectedDateString)
+          .get();
+
+      if (!checkin.exists) {
+        continue;
+      }
+
+      final data = checkin.data();
+
+      if (data == null) {
+        continue;
+      }
+
+      final project =
+      data["project"]?.toString();
+
+      final checkInTime =
+      data["checkInTime"]?.toString();
+
+      // A Szabi nem számít jelenlévő dolgozónak.
+      if (project == "Szabi") {
+        continue;
+      }
+
+      if (checkInTime != null &&
+          checkInTime.isNotEmpty) {
+        result.add(employee);
+      }
+    }
+
+    return result;
+  }
+}
+
+
+/* ============================================================
+   AKTÍV PROJEKTEK
+   ============================================================ */
+
+class _ActiveProjectsPage extends StatelessWidget {
+  const _ActiveProjectsPage();
+
+  Future<List<Map<String, dynamic>>> _loadActiveProjects() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection("projects")
+        .get();
+
+    final List<Map<String, dynamic>> projects = [];
+
+    for (final document in snapshot.docs) {
+      if (document.id == "Szabi") {
+        continue;
+      }
+
+      final data = document.data();
+
+      final workers =
+      (data["Munkások száma"] ?? 0) as num;
+
+      if (workers <= 0) {
+        continue;
+      }
+
+      projects.add({
+        "name": document.id,
+        "workers": workers.toInt(),
+      });
+    }
+
+    projects.sort(
+          (a, b) => (b["workers"] as int)
+          .compareTo(a["workers"] as int),
+    );
+
+    return projects;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          "Aktív projektek",
+        ),
+      ),
+
+      body: FutureBuilder<
+          List<Map<String, dynamic>>>(
+        future: _loadActiveProjects(),
+
+        builder: (context, snapshot) {
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                "Hiba történt:\n${snapshot.error}",
+                textAlign: TextAlign.center,
+              ),
+            );
+          }
+
+          final projects =
+              snapshot.data ?? [];
+
+          if (projects.isEmpty) {
+            return const Center(
+              child: Text(
+                "Jelenleg egyetlen projekten sem dolgoznak.",
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+
+            itemCount: projects.length,
+
+            itemBuilder: (context, index) {
+              final project =
+              projects[index];
+
+              final name =
+                  project["name"]?.toString() ??
+                      "";
+
+              final workers =
+              project["workers"] as int;
+
+              return Card(
+                margin:
+                const EdgeInsets.only(
+                  bottom: 8,
+                ),
+
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    child: Icon(
+                      Icons.assignment_outlined,
+                    ),
+                  ),
+
+                  title: Text(
+                    name,
+                    style: const TextStyle(
+                      fontWeight:
+                      FontWeight.w600,
+                    ),
+                  ),
+
+                  subtitle: const Text(
+                    "Jelenleg dolgoznak rajta",
+                  ),
+
+                  trailing: Container(
+                    padding:
+                    const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+
+                    decoration: BoxDecoration(
+                      borderRadius:
+                      BorderRadius.circular(
+                        20,
+                      ),
+
+                      color:
+                      const Color(0xFF8543D8)
+                          .withOpacity(0.1),
+                    ),
+
+                    child: Text(
+                      "$workers fő",
+                      style: const TextStyle(
+                        fontWeight:
+                        FontWeight.bold,
+                        color:
+                        Color(0xFF8543D8),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -2399,263 +3035,6 @@ class _EmployeesCard extends StatelessWidget {
     );
   }
 }
-
-
-/* ============================================================
-   ÖSSZES DOLGOZÓ OLDAL
-   ============================================================ */
-
-class _AllEmployeesPage extends StatelessWidget {
-  final DateTime selectedDate;
-
-  const _AllEmployeesPage({
-    required this.selectedDate,
-  });
-
-  String get selectedDateString {
-    return "${selectedDate.year.toString().padLeft(4, '0')}-"
-        "${selectedDate.month.toString().padLeft(2, '0')}-"
-        "${selectedDate.day.toString().padLeft(2, '0')}";
-  }
-
-  String get formattedDate {
-    return "${selectedDate.year}. "
-        "${selectedDate.month.toString().padLeft(2, '0')}. "
-        "${selectedDate.day.toString().padLeft(2, '0')}.";
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-
-      /* ======================================================
-         FEJLÉC
-         ====================================================== */
-
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF101E2E),
-
-        foregroundColor: Colors.white,
-
-        elevation: 0,
-
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: Colors.white,
-          ),
-
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
-
-        title: const Text(
-          "ÖSSZES DOLGOZÓ",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-
-        centerTitle: true,
-      ),
-
-      body: SafeArea(
-        child: StreamBuilder<
-            QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection("users")
-              .snapshots(),
-
-          builder: (context, snapshot) {
-            /* ------------------------------------------------
-               BETÖLTÉS
-               ------------------------------------------------ */
-
-            if (snapshot.connectionState ==
-                ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Color(0xFF1976E8),
-                ),
-              );
-            }
-
-            /* ------------------------------------------------
-               HIBA
-               ------------------------------------------------ */
-
-            if (snapshot.hasError) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-
-                  child: Text(
-                    "Nem sikerült betölteni a dolgozókat:\n\n"
-                        "${snapshot.error}",
-
-                    textAlign: TextAlign.center,
-
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.red,
-                    ),
-                  ),
-                ),
-              );
-            }
-
-            /* ------------------------------------------------
-               DOLGOZÓK
-               ------------------------------------------------ */
-
-            final employees =
-                snapshot.data?.docs ?? [];
-
-            if (employees.isEmpty) {
-              return const Center(
-                child: Text(
-                  "Nincs dolgozó az adatbázisban.",
-
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF8A9098),
-                  ),
-                ),
-              );
-            }
-
-            return Column(
-              children: [
-                /* ============================================
-                   DÁTUM
-                   ============================================ */
-
-                Container(
-                  width: double.infinity,
-
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 12,
-                  ),
-
-                  color: Colors.white,
-
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.calendar_today,
-                        size: 15,
-                        color: Color(0xFF1976E8),
-                      ),
-
-                      const SizedBox(width: 8),
-
-                      Text(
-                        "Jelenlét: $formattedDate",
-
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF343A40),
-                        ),
-                      ),
-
-                      const Spacer(),
-
-                      Text(
-                        "${employees.length} fő",
-
-                        style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1976E8),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                /* ============================================
-                   ELVÁLASZTÓ
-                   ============================================ */
-
-                Container(
-                  height: 1,
-                  color: const Color(0xFFE5E9ED),
-                ),
-
-                /* ============================================
-                   ÖSSZES DOLGOZÓ LISTÁJA
-                   ============================================ */
-
-                Expanded(
-                  child: ListView.builder(
-                    physics:
-                    const BouncingScrollPhysics(),
-
-                    padding: const EdgeInsets.fromLTRB(
-                      16,
-                      12,
-                      16,
-                      24,
-                    ),
-
-                    itemCount: employees.length,
-
-                    itemBuilder: (context, index) {
-                      final employee =
-                      employees[index];
-
-                      return Container(
-                        margin: const EdgeInsets.only(
-                          bottom: 6,
-                        ),
-
-                        padding:
-                        const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-
-                          borderRadius:
-                          BorderRadius.circular(8),
-
-                          border: Border.all(
-                            color:
-                            const Color(0xFFE8ECF0),
-                          ),
-                        ),
-
-                        child: _FirestoreEmployeeRow(
-                          employeeId: employee.id,
-
-                          employeeData:
-                          employee.data(),
-
-                          selectedDate:
-                          selectedDateString,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
 
 /* ============================================================
    FIRESTORE DOLGOZÓ SOR
@@ -7689,23 +8068,23 @@ class MorePage extends StatelessWidget {
           "munkaido_${year}_"
           "${month.toString().padLeft(2, '0')}.xlsx";
 
-      final blob = html.Blob(
-        [bytes],
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      // ----------------------------------------------------------
+// EXCEL FÁJL MENTÉSE - WEB / ANDROID / IOS
+// ----------------------------------------------------------
+
+      final savedFile = await FileSaver.instance.saveFile(
+        name: "munkaido_${year}_"
+            "${month.toString().padLeft(2, '0')}",
+        bytes: Uint8List.fromList(bytes),
+        fileExtension: "xlsx",
+        mimeType: MimeType.microsoftExcel,
       );
 
-      final url =
-      html.Url.createObjectUrlFromBlob(blob);
-
-      final anchor =
-      html.AnchorElement(href: url)
-        ..setAttribute(
-          'download',
-          fileName,
-        )
-        ..click();
-
-      html.Url.revokeObjectUrl(url);
+      if (savedFile.isEmpty) {
+        throw Exception(
+          "A fájl mentése megszakadt vagy nem sikerült.",
+        );
+      }
 
 // ----------------------------------------------------------
 // BETÖLTŐ ABLAK BEZÁRÁSA
