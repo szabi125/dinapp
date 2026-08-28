@@ -164,10 +164,6 @@ class AuthGate extends StatelessWidget {
    HOME SCREEN
    ============================================================ */
 
-/* ============================================================
-   HOME SCREEN
-   ============================================================ */
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -909,14 +905,6 @@ class _WelcomeSection
 
 /* ============================================================
    STATISTICS - FIRESTORE
-   ============================================================ */
-
-/* ============================================================
-   STATISZTIKÁK
-   ============================================================ */
-
-/* ============================================================
-   STATISZTIKÁK
    ============================================================ */
 
 class _StatsGrid extends StatelessWidget {
@@ -8630,11 +8618,19 @@ class _ToolsPageState
       // FIRESTORE FRISSÍTÉSE
       // ============================================================
 
-      await toolDoc.reference.update({
-        "Használó": userName,
-        "kivette": formattedDateTime,
-        "leadva": "",
-      });
+      if (userName == "Varga Dávid") {
+        // Varga Dávid a szerszámot visszateszi a raktárba
+        await toolDoc.reference.update({
+          "Használó": "",
+          "kivette": "",
+        });
+      } else {
+        // Normál dolgozó kiveszi a szerszámot
+        await toolDoc.reference.update({
+          "Használó": userName,
+          "kivette": formattedDateTime,
+        });
+      }
 
       // ============================================================
       // FRISS ADATOK MEGJELENÍTÉSE
@@ -8661,7 +8657,9 @@ class _ToolsPageState
         SnackBar(
           backgroundColor: Colors.green,
           content: Text(
-            "A szerszám kiadva: $userName",
+            userName == "Varga Dávid"
+                ? "A szerszám visszakerült a raktárba."
+                : "A szerszám kiadva: $userName",
           ),
         ),
       );
@@ -9040,14 +9038,6 @@ class _ToolInfoCard
                   ?.toString() ??
                   "Nincs adat",
             ),
-
-            _ToolDataRow(
-              label: "Leadva",
-              value:
-              toolData["leadva"]
-                  ?.toString() ??
-                  "Nincs adat",
-            ),
           ],
         ),
       ),
@@ -9368,8 +9358,6 @@ class _AdminPageState
         "Használó": "",
 
         "kivette": "",
-
-        "leadva": "",
 
       });
 
