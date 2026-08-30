@@ -94,9 +94,12 @@ Future<void> saveUserToFirestore(User user) async {
 
     print("🔔 FCM: getToken() indul...");
 
-    final fcmToken = await FirebaseMessaging.instance.getToken(
+    final fcmToken =
+    await FirebaseMessaging.instance.getToken(
       vapidKey:
       "BN9XgSDYTLOEt1CZe-jvIHup2YypPi7bRe3G3mgvtOrqypoXd2StHE-PZw4q0JEKfEM0VOXUrU6_wUD1X-TR1vE",
+      serviceWorkerScriptPath:
+      "firebase-messaging-sw.js",
     );
 
     print("🔔 FCM TOKEN: $fcmToken");
