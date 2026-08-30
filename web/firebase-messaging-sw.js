@@ -15,16 +15,68 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log("Háttérben érkezett FCM:", payload);
 
-  const notificationTitle =
-    payload.notification?.title || "DINA95 Jelenléti Rendszer";
+  const title =
+    payload.notification?.title ||
+    "DINA95 Jelenléti Rendszer";
 
-  const notificationOptions = {
-    body: payload.notification?.body || "Új értesítés érkezett.",
+  const body =
+    payload.notification?.body ||
+    "Új értesítés érkezett.";
+
+  const options = {
+    body: body,
+
     icon: "/icons/Icon-192.png",
+
+    badge: "/icons/Icon-192.png",
+
+    tag: "dina95-notification",
+
+    renotify: true,
+
+    requireInteraction: false,
+
+    data: {
+      url: payload.data?.url || "/"
+    }
   };
 
-  self.registration.showNotification(
-    notificationTitle,
-    notificationOptions
+  self.registration.showNotification(title, options);
+});
+
+
+/*
+ * Értesítésre kattintás
+ */
+self.addEventListener("notificationclick", (event) => {
+
+  event.notification.close();
+
+  const urlToOpen =
+    event.notification.data?.url || "/";
+
+  event.waitUntil(
+
+    clients.matchAll({
+      type: "window",
+      includeUncontrolled: true
+    }).then((clientList) => {
+
+      // Ha már nyitva van az alkalmazás,
+      // akkor azt hozzuk előtérbe.
+      for (const client of clientList) {
+
+        if ("focus" in client) {
+          return client.focus();
+        }
+      }
+
+      // Ha nincs megnyitva, megnyitjuk.
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+
+    })
+
   );
 });
