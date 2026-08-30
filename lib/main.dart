@@ -75,8 +75,8 @@ Future<void> saveUserToFirestore(User user) async {
   }
 
   // ============================================================
-// FCM TOKEN LEKÉRÉSE
-// ============================================================
+  // FCM TOKEN LEKÉRÉSE
+  // ============================================================
 
   try {
     print("🔔 FCM: token lekérése indul...");
@@ -117,6 +117,7 @@ Future<void> saveUserToFirestore(User user) async {
     print("❌ FCM HIBA: $e");
     print("❌ STACK TRACE: $stackTrace");
   }
+}
 
 /* ============================================================
    APP
