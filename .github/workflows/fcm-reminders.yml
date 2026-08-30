@@ -1,0 +1,40 @@
+name: DINA95 FCM jelenléti emlékeztető
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository letöltése
+        uses: actions/checkout@v4
+
+      - name: Node.js beállítása
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Függőségek telepítése
+        working-directory: notification-server
+        run: npm ci
+
+      - name: FCM emlékeztetők küldése
+        working-directory: notification-server
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          node -e "
+          const fs = require('fs');
+          fs.writeFileSync(
+            'serviceAccountKey.json',
+            process.env.FIREBASE_SERVICE_ACCOUNT
+          );
+          "
+
+          node send-reminders.js
+
+          rm -f serviceAccountKey.json
