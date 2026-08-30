@@ -75,26 +75,48 @@ Future<void> saveUserToFirestore(User user) async {
   }
 
   // ============================================================
-  // FCM TOKEN LEKÉRÉSE
-  // ============================================================
+// FCM TOKEN LEKÉRÉSE
+// ============================================================
 
   try {
-    final fcmToken =
-    await FirebaseMessaging.instance.getToken(
-      vapidKey: "BN9XgSDYTLOEt1CZe-jvIHup2YypPi7bRe3G3mgvtOrqypoXd2StHE-PZw4q0JEKfEM0VOXUrU6_wUD1X-TR1vE",
+    print("🔔 FCM: token lekérése indul...");
+
+    final permission =
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
     );
 
-    if (fcmToken != null && fcmToken.isNotEmpty) {
-      await userRef.set({
-        "fcmToken": fcmToken,
-      }, SetOptions(merge: true));
+    print(
+      "🔔 FCM engedély állapot: ${permission.authorizationStatus}",
+    );
 
-      print("FCM token elmentve: $fcmToken");
+    print("🔔 FCM: getToken() indul...");
+
+    final fcmToken = await FirebaseMessaging.instance.getToken(
+      vapidKey:
+      "BN9XgSDYTLOEt1CZe-jvIHup2YypPi7bRe3G3mgvtOrqypoXd2StHE-PZw4q0JEKfEM0VOXUrU6_wUD1X-TR1vE",
+    );
+
+    print("🔔 FCM TOKEN: $fcmToken");
+
+    if (fcmToken != null && fcmToken.isNotEmpty) {
+      await userRef.set(
+        {
+          "fcmToken": fcmToken,
+        },
+        SetOptions(merge: true),
+      );
+
+      print("✅ FCM token elmentve Firestore-ba!");
+    } else {
+      print("❌ FCM TOKEN NULL vagy üres!");
     }
-  } catch (e) {
-    print("FCM token mentési hiba: $e");
+  } catch (e, stackTrace) {
+    print("❌ FCM HIBA: $e");
+    print("❌ STACK TRACE: $stackTrace");
   }
-}
 
 /* ============================================================
    APP
