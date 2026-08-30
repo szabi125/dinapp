@@ -11,7 +11,6 @@ initializeApp({
 const db = getFirestore();
 const messaging = getMessaging();
 
-
 async function main() {
   // Magyarországi mai dátum
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -40,9 +39,7 @@ async function main() {
 
     // Nincs token
     if (!token) {
-      console.log(
-        `⚠️ ${name}: nincs fcmToken`
-      );
+      console.log(`⚠️ ${name}: nincs fcmToken`);
       continue;
     }
 
@@ -57,9 +54,7 @@ async function main() {
 
     // Már becsekkolt
     if (checkinSnapshot.exists) {
-      console.log(
-        `✅ ${name}: már becsekkolt`
-      );
+      console.log(`✅ ${name}: már becsekkolt`);
       continue;
     }
 
@@ -70,32 +65,68 @@ async function main() {
     const message = {
       token: token,
 
+      // =====================================================
+      // ALAP ÉRTESÍTÉS
+      // =====================================================
+
       notification: {
-        title: "DINA95 Jelenléti Rendszer",
+        title: "🔔 DINA95 Jelenléti Rendszer",
         body:
           "Még nem csekkoltál be! Kérlek, rögzítsd a jelenléted.",
       },
 
+      // =====================================================
+      // WEB
+      // =====================================================
+
       webpush: {
         notification: {
-          title: "DINA95 Jelenléti Rendszer",
+          title: "🔔 DINA95 Jelenléti Rendszer",
           body:
             "Még nem csekkoltál be! Kérlek, rögzítsd a jelenléted.",
+
           icon: "/icons/Icon-192.png",
+          badge: "/icons/Icon-192.png",
+
+          tag: "dina95-checkin-reminder",
+
+          requireInteraction: false,
+
+          data: {
+            type: "attendance_reminder",
+            date: today,
+          },
+        },
+
+        fcmOptions: {
+          link: "/",
         },
       },
 
+      // =====================================================
+      // ANDROID
+      // =====================================================
+
       android: {
+        priority: "high",
+
         notification: {
-          title: "DINA95 Jelenléti Rendszer",
+          title: "🔔 DINA95 Jelenléti Rendszer",
           body:
             "Még nem csekkoltál be! Kérlek, rögzítsd a jelenléted.",
+
+          channelId: "dina95_reminders",
         },
       },
+
+      // =====================================================
+      // SAJÁT ADATOK
+      // =====================================================
 
       data: {
         type: "attendance_reminder",
         date: today,
+        url: "/",
       },
     };
 
