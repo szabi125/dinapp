@@ -15,6 +15,7 @@ import 'login_screen.dart';
 import 'dart:async';
 
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 
 
@@ -25,11 +26,32 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  // ============================================================
+  // FIREBASE CLOUD MESSAGING
+  // ============================================================
+
+  await FirebaseMessaging.instance.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
+  // ============================================================
+  // FCM - ELŐTÉRBEN ÉRKEZŐ ÜZENETEK
+  // ============================================================
+
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    print("FCM üzenet érkezett!");
+
+    print("Cím: ${message.notification?.title}");
+    print("Szöveg: ${message.notification?.body}");
+  });
+
   runApp(const DinaApp());
 }
 
 /* ============================================================
-   FIRESTORE - FELHASZNÁLÓ MENTÉSE
+   FIRESTORE - FELHASZNÁLÓ MENTÉSE + FCM TOKEN
    ============================================================ */
 
 Future<void> saveUserToFirestore(User user) async {
@@ -39,6 +61,10 @@ Future<void> saveUserToFirestore(User user) async {
 
   final document = await userRef.get();
 
+  // ============================================================
+  // FELHASZNÁLÓ LÉTREHOZÁSA, HA MÉG NINCS
+  // ============================================================
+
   if (!document.exists) {
     await userRef.set({
       "email": user.email ?? "",
@@ -46,6 +72,27 @@ Future<void> saveUserToFirestore(User user) async {
       "join_date": FieldValue.serverTimestamp(),
       "szabadsag": 0,
     });
+  }
+
+  // ============================================================
+  // FCM TOKEN LEKÉRÉSE
+  // ============================================================
+
+  try {
+    final fcmToken =
+    await FirebaseMessaging.instance.getToken(
+      vapidKey: "BN9XgSDYTLOEt1CZe-jvIHup2YypPi7bRe3G3mgvtOrqypoXd2StHE-PZw4q0JEKfEM0VOXUrU6_wUD1X-TR1vE",
+    );
+
+    if (fcmToken != null && fcmToken.isNotEmpty) {
+      await userRef.set({
+        "fcmToken": fcmToken,
+      }, SetOptions(merge: true));
+
+      print("FCM token elmentve: $fcmToken");
+    }
+  } catch (e) {
+    print("FCM token mentési hiba: $e");
   }
 }
 
