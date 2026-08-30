@@ -40,14 +40,28 @@
 </head>
 
 <body>
-<!--
-  You can customize the "flutter_bootstrap.js" script.
-  This is useful to provide a custom configuration to the Flutter loader
-  or to give the user feedback during the initialization process.
 
-  For more details:
-  https://docs.flutter.dev/platform-integration/web/initialization
--->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register(
+        'firebase-messaging-sw.js'
+      ).then(function (registration) {
+        console.log(
+          'Firebase Messaging Service Worker regisztrálva:',
+          registration.scope
+        );
+      }).catch(function (error) {
+        console.error(
+          'Firebase Messaging Service Worker hiba:',
+          error
+        );
+      });
+    });
+  }
+</script>
+
 <script src="flutter_bootstrap.js" async></script>
+
 </body>
 </html>
