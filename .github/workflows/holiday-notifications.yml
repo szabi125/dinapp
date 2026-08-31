@@ -1,0 +1,69 @@
+name: DINA95 Szabadság értesítések
+
+on:
+  schedule:
+    # 5 percenként ellenőrzi az új szabadságokat
+    - cron: "*/5 * * * *"
+
+  # Kézi indítás lehetősége
+  workflow_dispatch:
+
+jobs:
+  send-holiday-notifications:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ========================================================
+      # REPOSITORY LETÖLTÉSE
+      # ========================================================
+
+      - name: Repository letöltése
+        uses: actions/checkout@v4
+
+      # ========================================================
+      # NODE.JS
+      # ========================================================
+
+      - name: Node.js beállítása
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # ========================================================
+      # FÜGGŐSÉGEK TELEPÍTÉSE
+      # ========================================================
+
+      - name: Függőségek telepítése
+        working-directory: notification-server
+        run: npm ci
+
+      # ========================================================
+      # FIREBASE SERVICE ACCOUNT LÉTREHOZÁSA
+      # ========================================================
+
+      - name: Firebase Service Account létrehozása
+        working-directory: notification-server
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > serviceAccountKey.json
+
+      # ========================================================
+      # SZABADSÁGÉRTESÍTÉSEK KÜLDÉSE
+      # ========================================================
+
+      - name: Szabadság értesítések küldése
+        working-directory: notification-server
+        run: |
+          node send-holiday-notifications.js
+
+      # ========================================================
+      # SERVICE ACCOUNT TÖRLÉSE
+      # ========================================================
+
+      - name: Service Account törlése
+        if: always()
+        working-directory: notification-server
+        run: |
+          rm -f serviceAccountKey.json

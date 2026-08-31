@@ -6769,6 +6769,28 @@ class _CalendarPageState extends State<CalendarPage> {
         );
       }
 
+      final holidayNotificationRef =
+      _firestore.collection('holidayNotifications').doc();
+
+      final selectedDates = _selectedDays
+          .map((day) => _dateId(day))
+          .toList()
+        ..sort();
+
+      final userName =
+          userData?['name']?.toString() ?? 'Dolgozó';
+
+      batch.set(
+        holidayNotificationRef,
+        {
+          'userId': user.uid,
+          'name': userName,
+          'dates': selectedDates,
+          'sent': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+      );
+
       // --------------------------------------------------------
       // SZABADSÁG KERET CSÖKKENTÉSE
       // --------------------------------------------------------
