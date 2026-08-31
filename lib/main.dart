@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart' as excel2;
 import 'package:file_saver/file_saver.dart';
 import 'dart:typed_data';
+import 'package:url_launcher/url_launcher.dart';
 
 
 import 'package:flutter/material.dart';
@@ -360,64 +361,95 @@ class _HomeScreenState
 
         bottom: false,
 
-        child: IndexedStack(
-
-          index: selectedIndex,
-
+        child: Column(
           children: [
 
             /* ==================================================
-               0 - KEZDŐLAP
-               ================================================== */
+             FELSŐ KÖZÖS FEJLÉC
+             ================================================== */
 
-            DashboardPage(
+            _TopHeader(
               onLogout: logout,
+              onNavigate: (index) {
+                setState(() {
+                  selectedIndex = index;
+                });
+              },
             ),
 
             /* ==================================================
-               1 - JELENLÉT
-               ================================================== */
+             OLDAL TARTALMA
+             ================================================== */
 
-            const AttendancePage(),
+            Expanded(
 
-            /* ==================================================
-               2 - NAPTÁR
-               ================================================== */
+              child: IndexedStack(
 
-            const CalendarPage(),
+                index: selectedIndex,
 
-            /* ==================================================
-               3 - PROJEKTEK
-               ================================================== */
+                children: [
 
-            const ProjectsPage(),
+                  /* ==============================================
+                   0 - KEZDŐLAP
+                   ============================================== */
 
-            /* ==================================================
-               4 - SZERSZÁMOK
-               ================================================== */
+                  DashboardPage(
+                    onLogout: logout,
 
-            const ToolsPage(),
+                    onNavigate: (index) {
+                      setState(() {
+                        selectedIndex = index;
+                      });
+                    },
+                  ),
 
-            /* ==================================================
-               5 - TÖBB
-               ================================================== */
+                  /* ==============================================
+                   1 - JELENLÉT
+                   ============================================== */
 
-            MorePage(
-              onLogout: logout,
+                  const AttendancePage(),
+
+                  /* ==============================================
+                   2 - NAPTÁR
+                   ============================================== */
+
+                  const CalendarPage(),
+
+                  /* ==============================================
+                   3 - PROJEKTEK
+                   ============================================== */
+
+                  const ProjectsPage(),
+
+                  /* ==============================================
+                   4 - SZERSZÁMOK
+                   ============================================== */
+
+                  const ToolsPage(),
+
+                  /* ==============================================
+                   5 - TÖBB
+                   ============================================== */
+
+                  MorePage(
+                    onLogout: logout,
+                  ),
+
+                  /* ==============================================
+                   6 - ADMIN
+                   ============================================== */
+
+                  const AdminPage(),
+                ],
+              ),
             ),
-
-            /* ==================================================
-               6 - ADMIN
-               ================================================== */
-
-            const AdminPage(),
           ],
         ),
       ),
 
       /* ========================================================
-         ALSÓ NAVIGÁCIÓ
-         ======================================================== */
+       ALSÓ NAVIGÁCIÓ
+       ======================================================== */
 
       bottomNavigationBar:
 
@@ -457,10 +489,14 @@ class _HomeScreenState
 class DashboardPage extends StatefulWidget {
   final Future<void> Function() onLogout;
 
+  final void Function(int index) onNavigate;
+
   const DashboardPage({
     super.key,
     required this.onLogout,
+    required this.onNavigate,
   });
+
 
   @override
   State<DashboardPage> createState() =>
@@ -480,12 +516,6 @@ class _DashboardPageState
       const BouncingScrollPhysics(),
 
       slivers: [
-        SliverToBoxAdapter(
-          child: _TopHeader(
-            onLogout: widget.onLogout,
-          ),
-        ),
-
         SliverPadding(
           padding:
           const EdgeInsets.fromLTRB(
@@ -530,35 +560,56 @@ class _DashboardPageState
           ),
 
           sliver: SliverToBoxAdapter(
-            child: Row(
-              crossAxisAlignment:
-              CrossAxisAlignment.start,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isSmallScreen = constraints.maxWidth < 600;
 
-              children: [
-                Expanded(
-                  child: _DailyOverview(
-                    selectedDate:
-                    selectedDate,
-                  ),
-                ),
+                if (isSmallScreen) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _DailyOverview(
+                        selectedDate: selectedDate,
+                      ),
 
-                const SizedBox(width: 10),
+                      const SizedBox(height: 10),
 
-                Expanded(
-                  child: _CalendarCard(
-                    selectedDate:
-                    selectedDate,
+                      _CalendarCard(
+                        selectedDate: selectedDate,
+                        onDateSelected: (date) {
+                          setState(() {
+                            selectedDate = date;
+                          });
+                        },
+                      ),
+                    ],
+                  );
+                }
 
-                    onDateSelected:
-                        (date) {
-                      setState(() {
-                        selectedDate =
-                            date;
-                      });
-                    },
-                  ),
-                ),
-              ],
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _DailyOverview(
+                        selectedDate: selectedDate,
+                      ),
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    Expanded(
+                      child: _CalendarCard(
+                        selectedDate: selectedDate,
+                        onDateSelected: (date) {
+                          setState(() {
+                            selectedDate = date;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -577,24 +628,46 @@ class _DashboardPageState
           ),
 
           sliver: SliverToBoxAdapter(
-            child: Row(
-              crossAxisAlignment:
-              CrossAxisAlignment.start,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isSmallScreen = constraints.maxWidth < 600;
 
-              children: [
-                Expanded(
-                  child: _EmployeesCard(
-                    selectedDate:
-                    selectedDate,
-                  ),
-                ),
+                if (isSmallScreen) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _EmployeesCard(
+                        selectedDate: selectedDate,
+                      ),
 
-                const SizedBox(width: 10),
+                      const SizedBox(height: 10),
 
-                const Expanded(
-                  child: _ProjectsCard(),
-                ),
-              ],
+                      _ProjectsCard(
+                        onNavigate: widget.onNavigate,
+                      ),
+                    ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _EmployeesCard(
+                        selectedDate: selectedDate,
+                      ),
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    Expanded(
+                      child: _ProjectsCard(
+                        onNavigate: widget.onNavigate,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -625,12 +698,458 @@ class _DashboardPageState
 class _TopHeader extends StatelessWidget {
   final Future<void> Function() onLogout;
 
+  // ============================================================
+  // OLDALVÁLTÁS
+  // ============================================================
+
+  final void Function(int index) onNavigate;
+
   const _TopHeader({
     required this.onLogout,
+    required this.onNavigate,
   });
+
+  /* ============================================================
+     ÉRTESÍTÉSI OLDALSÁV
+     ============================================================ */
+
+  void _showNotifications(BuildContext context) {
+    showGeneralDialog(
+      context: context,
+
+      barrierDismissible: true,
+
+      barrierLabel:
+      "Értesítések",
+
+      barrierColor:
+      Colors.black54,
+
+      transitionDuration:
+      const Duration(
+        milliseconds: 300,
+      ),
+
+      pageBuilder: (
+          context,
+          animation,
+          secondaryAnimation,
+          ) {
+
+        return Align(
+          alignment:
+          Alignment.centerRight,
+
+          child: Material(
+            color: Colors.white,
+
+            child: SafeArea(
+              child: SizedBox(
+                width:
+                MediaQuery.of(context)
+                    .size
+                    .width *
+                    0.85,
+
+                height:
+                MediaQuery.of(context)
+                    .size
+                    .height,
+
+                child: Column(
+                  children: [
+
+                    /* ==================================================
+                       OLDALSÁV FEJLÉC
+                       ================================================== */
+
+                    Container(
+                      height: 70,
+
+                      padding:
+                      const EdgeInsets.symmetric(
+                        horizontal: 18,
+                      ),
+
+                      decoration:
+                      const BoxDecoration(
+                        color:
+                        Color(0xFF101E2E),
+                      ),
+
+                      child: Row(
+                        children: [
+
+                          const Icon(
+                            Icons.notifications,
+                            color: Colors.white,
+                            size: 25,
+                          ),
+
+                          const SizedBox(
+                            width: 12,
+                          ),
+
+                          const Expanded(
+                            child: Text(
+                              "Értesítések",
+
+                              style:
+                              TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight:
+                                FontWeight.w700,
+                              ),
+                            ),
+                          ),
+
+                          IconButton(
+                            onPressed: () {
+                              Navigator.pop(
+                                context,
+                              );
+                            },
+
+                            icon:
+                            const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    /* ==================================================
+                       ÉRTESÍTÉSEK
+                       ================================================== */
+
+                    Expanded(
+                      child:
+                      StreamBuilder<
+                          QuerySnapshot<
+                              Map<String, dynamic>>>(
+                        stream:
+                        FirebaseFirestore.instance
+                            .collection(
+                          "holidayNotifications",
+                        )
+                            .orderBy(
+                          "createdAt",
+                          descending: true,
+                        )
+                            .snapshots(),
+
+                        builder:
+                            (context, snapshot) {
+
+                          if (snapshot.hasError) {
+                            return Center(
+                              child: Padding(
+                                padding:
+                                const EdgeInsets.all(
+                                  20,
+                                ),
+
+                                child: Text(
+                                  "Hiba az értesítések betöltésekor:\n\n"
+                                      "${snapshot.error}",
+
+                                  textAlign:
+                                  TextAlign.center,
+
+                                  style:
+                                  const TextStyle(
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                              child:
+                              CircularProgressIndicator(),
+                            );
+                          }
+
+                          final notifications =
+                              snapshot.data?.docs ?? [];
+
+                          /* ==================================================
+                             NINCS ÉRTESÍTÉS
+                             ================================================== */
+
+                          if (notifications.isEmpty) {
+                            return const Center(
+                              child: Column(
+                                mainAxisAlignment:
+                                MainAxisAlignment.center,
+
+                                children: [
+
+                                  Icon(
+                                    Icons
+                                        .notifications_none,
+                                    size: 55,
+                                    color:
+                                    Colors.grey,
+                                  ),
+
+                                  SizedBox(
+                                    height: 12,
+                                  ),
+
+                                  Text(
+                                    "Nincs értesítés.",
+
+                                    style:
+                                    TextStyle(
+                                      fontSize: 16,
+                                      color:
+                                      Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          /* ==================================================
+                             ÉRTESÍTÉSEK LISTÁJA
+                             ================================================== */
+
+                          return ListView.builder(
+                            padding:
+                            const EdgeInsets.all(
+                              12,
+                            ),
+
+                            itemCount:
+                            notifications.length,
+
+                            itemBuilder:
+                                (context, index) {
+
+                              final data =
+                              notifications[index]
+                                  .data();
+
+                              final String name =
+                                  data["name"]
+                                      ?.toString() ??
+                                      "Dolgozó";
+
+                              final List<dynamic>
+                              dates =
+                                  data["dates"]
+                                  as List<dynamic>? ??
+                                      [];
+
+                              final String dateText =
+                              dates.join(", ");
+
+                              String createdText =
+                                  "";
+
+                              final createdAt =
+                              data["createdAt"];
+
+                              if (createdAt
+                              is Timestamp) {
+
+                                final date =
+                                createdAt.toDate();
+
+                                createdText =
+                                "${date.year}."
+                                    "${date.month.toString().padLeft(2, '0')}."
+                                    "${date.day.toString().padLeft(2, '0')} "
+                                    "${date.hour.toString().padLeft(2, '0')}:"
+                                    "${date.minute.toString().padLeft(2, '0')}";
+                              }
+
+                              return Card(
+                                margin:
+                                const EdgeInsets.only(
+                                  bottom: 10,
+                                ),
+
+                                elevation: 1,
+
+                                child:
+                                Padding(
+                                  padding:
+                                  const EdgeInsets.all(
+                                    14,
+                                  ),
+
+                                  child: Row(
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment
+                                        .start,
+
+                                    children: [
+
+                                      /* --------------------------------
+                                         IKON
+                                         -------------------------------- */
+
+                                      Container(
+                                        width: 42,
+                                        height: 42,
+
+                                        decoration:
+                                        BoxDecoration(
+                                          color:
+                                          Colors.blue
+                                              .withOpacity(
+                                            0.1,
+                                          ),
+
+                                          shape:
+                                          BoxShape.circle,
+                                        ),
+
+                                        child:
+                                        const Icon(
+                                          Icons
+                                              .beach_access,
+
+                                          color:
+                                          Color(
+                                            0xFF1976E8,
+                                          ),
+                                        ),
+                                      ),
+
+                                      const SizedBox(
+                                        width: 12,
+                                      ),
+
+                                      /* --------------------------------
+                                         SZÖVEG
+                                         -------------------------------- */
+
+                                      Expanded(
+                                        child:
+                                        Column(
+                                          crossAxisAlignment:
+                                          CrossAxisAlignment
+                                              .start,
+
+                                          children: [
+
+                                            Text(
+                                              "$name szabadságot vett ki",
+
+                                              style:
+                                              const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight:
+                                                FontWeight.w700,
+                                              ),
+                                            ),
+
+                                            const SizedBox(
+                                              height: 6,
+                                            ),
+
+                                            if (dateText
+                                                .isNotEmpty)
+                                              Text(
+                                                "Napok: $dateText",
+
+                                                style:
+                                                const TextStyle(
+                                                  fontSize: 13,
+                                                  color:
+                                                  Color(
+                                                    0xFF555B63,
+                                                  ),
+                                                ),
+                                              ),
+
+                                            if (createdText
+                                                .isNotEmpty)
+                                              Padding(
+                                                padding:
+                                                const EdgeInsets
+                                                    .only(
+                                                  top: 4,
+                                                ),
+
+                                                child:
+                                                Text(
+                                                  createdText,
+
+                                                  style:
+                                                  const TextStyle(
+                                                    fontSize: 11,
+                                                    color:
+                                                    Colors.grey,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+
+      /* ============================================================
+         BEÚSZÓ ANIMÁCIÓ
+         ============================================================ */
+
+      transitionBuilder: (
+          context,
+          animation,
+          secondaryAnimation,
+          child,
+          ) {
+
+        return SlideTransition(
+          position:
+          Tween<Offset>(
+            begin:
+            const Offset(1, 0),
+
+            end:
+            Offset.zero,
+          ).animate(
+            CurvedAnimation(
+              parent: animation,
+              curve:
+              Curves.easeOut,
+            ),
+          ),
+
+          child: child,
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+
     return Container(
       height: 90,
 
@@ -646,10 +1165,17 @@ class _TopHeader extends StatelessWidget {
 
       child: Row(
         children: [
+
+          /* ==================================================
+             MENÜ
+             ================================================== */
+
           IconButton(
             onPressed: () {
+
               showModalBottomSheet(
                 context: context,
+
                 backgroundColor:
                 Colors.white,
 
@@ -662,14 +1188,17 @@ class _TopHeader extends StatelessWidget {
                 ),
 
                 builder: (context) {
+
                   return SafeArea(
                     child: Column(
                       mainAxisSize:
                       MainAxisSize.min,
 
                       children: [
+
                         const SizedBox(
-                            height: 10),
+                          height: 10,
+                        ),
 
                         Container(
                           width: 40,
@@ -677,20 +1206,175 @@ class _TopHeader extends StatelessWidget {
 
                           decoration:
                           BoxDecoration(
-                            color: Colors
-                                .grey
-                                .shade300,
+                            color:
+                            Colors.grey.shade300,
 
                             borderRadius:
-                            BorderRadius
-                                .circular(
+                            BorderRadius.circular(
                               10,
                             ),
                           ),
                         ),
 
                         const SizedBox(
-                            height: 15),
+                          height: 15,
+                        ),
+
+                        /* ==================================================
+                           KEZDŐLAP
+                           ================================================== */
+
+                        ListTile(
+                          leading:
+                          const Icon(
+                            Icons.home_outlined,
+                          ),
+
+                          title:
+                          const Text(
+                            "Kezdőlap",
+                          ),
+
+                          onTap: () {
+
+                            Navigator.pop(
+                              context,
+                            );
+
+                            onNavigate(0);
+                          },
+                        ),
+
+                        /* ==================================================
+                           JELENLÉT
+                           ================================================== */
+
+                        ListTile(
+                          leading:
+                          const Icon(
+                            Icons.access_time_outlined,
+                          ),
+
+                          title:
+                          const Text(
+                            "Jelenlét",
+                          ),
+
+                          onTap: () {
+
+                            Navigator.pop(
+                              context,
+                            );
+
+                            onNavigate(1);
+                          },
+                        ),
+
+                        /* ==================================================
+                           NAPTÁR
+                           ================================================== */
+
+                        ListTile(
+                          leading:
+                          const Icon(
+                            Icons.calendar_month_outlined,
+                          ),
+
+                          title:
+                          const Text(
+                            "Naptár",
+                          ),
+
+                          onTap: () {
+
+                            Navigator.pop(
+                              context,
+                            );
+
+                            onNavigate(2);
+                          },
+                        ),
+
+                        /* ==================================================
+                           PROJEKTEK
+                           ================================================== */
+
+                        ListTile(
+                          leading:
+                          const Icon(
+                            Icons.folder_outlined,
+                          ),
+
+                          title:
+                          const Text(
+                            "Projektek",
+                          ),
+
+                          onTap: () {
+
+                            Navigator.pop(
+                              context,
+                            );
+
+                            onNavigate(3);
+                          },
+                        ),
+
+                        /* ==================================================
+                           SZERSZÁMOK
+                           ================================================== */
+
+                        ListTile(
+                          leading:
+                          const Icon(
+                            Icons.build_outlined,
+                          ),
+
+                          title:
+                          const Text(
+                            "Szerszámok",
+                          ),
+
+                          onTap: () {
+
+                            Navigator.pop(
+                              context,
+                            );
+
+                            onNavigate(4);
+                          },
+                        ),
+
+                        /* ==================================================
+                           TÖBB
+                           ================================================== */
+
+                        ListTile(
+                          leading:
+                          const Icon(
+                            Icons.more_horiz,
+                          ),
+
+                          title:
+                          const Text(
+                            "Több",
+                          ),
+
+                          onTap: () {
+
+                            Navigator.pop(
+                              context,
+                            );
+
+                            onNavigate(5);
+                          },
+                        ),
+
+                        const Divider(),
+
+                        /* ==================================================
+                           KIJELENTKEZÉS
+                           ================================================== */
 
                         ListTile(
                           leading:
@@ -706,22 +1390,27 @@ class _TopHeader extends StatelessWidget {
                             style:
                             TextStyle(
                               fontWeight:
-                              FontWeight
-                                  .w600,
+                              FontWeight.w600,
+
+                              color:
+                              Colors.red,
                             ),
                           ),
 
                           onTap:
                               () async {
+
                             Navigator.pop(
-                                context);
+                              context,
+                            );
 
                             await onLogout();
                           },
                         ),
 
                         const SizedBox(
-                            height: 10),
+                          height: 10,
+                        ),
                       ],
                     ),
                   );
@@ -739,15 +1428,21 @@ class _TopHeader extends StatelessWidget {
 
           const Spacer(),
 
+          /* ==================================================
+             LOGÓ
+             ================================================== */
+
           Column(
             mainAxisAlignment:
             MainAxisAlignment.center,
 
             children: [
+
               RichText(
                 text:
                 const TextSpan(
                   children: [
+
                     TextSpan(
                       text: "DINA'",
 
@@ -792,37 +1487,23 @@ class _TopHeader extends StatelessWidget {
 
           const Spacer(),
 
-          Stack(
-            children: [
-              IconButton(
-                onPressed: () {},
+          /* ==================================================
+             ÉRTESÍTÉSEK / CSENGŐ
+             ================================================== */
 
-                icon:
-                const Icon(
-                  Icons.notifications_none,
-                  color: Colors.white,
-                  size: 27,
-                ),
-              ),
+          IconButton(
+            onPressed: () {
+              _showNotifications(
+                context,
+              );
+            },
 
-              Positioned(
-                right: 10,
-                top: 10,
-
-                child: Container(
-                  width: 7,
-                  height: 7,
-
-                  decoration:
-                  const BoxDecoration(
-                    color:
-                    Color(0xFF1976E8),
-                    shape:
-                    BoxShape.circle,
-                  ),
-                ),
-              ),
-            ],
+            icon:
+            const Icon(
+              Icons.notifications_none,
+              color: Colors.white,
+              size: 27,
+            ),
           ),
         ],
       ),
@@ -858,7 +1539,9 @@ class _WelcomeSection
       BoxDecoration(
         borderRadius:
         BorderRadius.circular(10),
-        color: Colors.white,
+
+        color:
+        Colors.white,
 
         boxShadow: [
           BoxShadow(
@@ -866,15 +1549,26 @@ class _WelcomeSection
             Colors.black.withOpacity(
               .04,
             ),
-            blurRadius: 10,
+
+            blurRadius:
+            10,
+
             offset:
-            const Offset(0, 2),
+            const Offset(
+              0,
+              2,
+            ),
           ),
         ],
       ),
 
       child: Stack(
         children: [
+
+          /* ==================================================
+             LOGÓ
+             ================================================== */
+
           Positioned(
             right: 0,
             top: 0,
@@ -883,10 +1577,10 @@ class _WelcomeSection
 
             child: ClipRRect(
               borderRadius:
-              const BorderRadius
-                  .only(
+              const BorderRadius.only(
                 topRight:
                 Radius.circular(10),
+
                 bottomRight:
                 Radius.circular(10),
               ),
@@ -903,16 +1597,24 @@ class _WelcomeSection
                   ),
                 ),
 
-                child:
-                const Icon(
-                  Icons.construction,
-                  color:
-                  Colors.white24,
-                  size: 60,
+                child: Center(
+                  child: Image.asset(
+                    'assets/logo.png',
+
+                    width: 90,
+                    height: 90,
+
+                    fit:
+                    BoxFit.contain,
+                  ),
                 ),
               ),
             ),
           ),
+
+          /* ==================================================
+             SZÖVEG
+             ================================================== */
 
           Container(
             width: 250,
@@ -938,10 +1640,10 @@ class _WelcomeSection
 
             child: Column(
               crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
+              CrossAxisAlignment.start,
 
               children: [
+
                 Text(
                   "Üdvözöljük, $userName!",
 
@@ -953,15 +1655,18 @@ class _WelcomeSection
                   style:
                   const TextStyle(
                     fontSize: 19,
+
                     fontWeight:
                     FontWeight.w800,
+
                     color:
                     Color(0xFF20252B),
                   ),
                 ),
 
                 const SizedBox(
-                    height: 5),
+                  height: 5,
+                ),
 
                 const Text(
                   "Itt az összes fontos információ egy helyen.",
@@ -969,6 +1674,7 @@ class _WelcomeSection
                   style:
                   TextStyle(
                     fontSize: 9.5,
+
                     color:
                     Color(0xFF8A9098),
                   ),
@@ -1331,18 +2037,12 @@ class _StatsGrid extends StatelessWidget {
                     final activeProjectCount =
                         projectSnapshot.data ?? 0;
 
-                    return SizedBox(
-                        width: double.infinity,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isSmallScreen = constraints.maxWidth < 600;
 
-                        /* ==================================================
-                           DOLGOZÓK
-                           ================================================== */
-
-                        Expanded(
-                          child: GestureDetector(
+                        final cards = [
+                          GestureDetector(
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -1353,37 +2053,17 @@ class _StatsGrid extends StatelessWidget {
                                 ),
                               );
                             },
-
                             child: _StatCard(
                               icon: Icons.people_outline,
-
-                              color:
-                              const Color(0xFF1269DC),
-
+                              color: const Color(0xFF1269DC),
                               title: "Dolgozók",
-
-                              value:
-                              "$workerCount fő",
-
-                              subtitle:
-                              "Összes dolgozó",
-
-                              progress:
-                              workerCount > 0
-                                  ? 1.0
-                                  : 0.0,
+                              value: "$workerCount fő",
+                              subtitle: "Összes dolgozó",
+                              progress: workerCount > 0 ? 1.0 : 0.0,
                             ),
                           ),
-                        ),
 
-                        const SizedBox(width: 7),
-
-                        /* ==================================================
-                           MAI JELENLÉT
-                           ================================================== */
-
-                        Expanded(
-                          child: GestureDetector(
+                          GestureDetector(
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -1394,74 +2074,30 @@ class _StatsGrid extends StatelessWidget {
                                 ),
                               );
                             },
-
                             child: _StatCard(
-                              icon:
-                              Icons.calendar_month_outlined,
-
-                              color:
-                              const Color(0xFF22A76A),
-
-                              title:
-                              "Mai jelenlét",
-
-                              value:
-                              "$presentCount fő",
-
+                              icon: Icons.calendar_month_outlined,
+                              color: const Color(0xFF22A76A),
+                              title: "Mai jelenlét",
+                              value: "$presentCount fő",
                               subtitle:
                               "${(attendancePercentage * 100).round()}% jelenlét",
-
                               progress:
-                              attendancePercentage
-                                  .clamp(0.0, 1.0),
+                              attendancePercentage.clamp(0.0, 1.0),
                             ),
                           ),
-                        ),
 
-                        const SizedBox(width: 7),
-
-                        /* ==================================================
-                           HAVI LEDOLGOZOTT ÓRÁK
-                           ================================================== */
-
-                        Expanded(
-                          child: _StatCard(
-                            icon:
-                            Icons.access_time,
-
-                            color:
-                            const Color(0xFFF28A18),
-
-                            title:
-                            "Ledolgozott órák",
-
-                            value:
-                            _formatHours(
-                              monthlyHours,
-                            ),
-
-                            subtitle:
-                            "Ebben a hónapban",
-
-                            progress:
-                            monthlyHours > 0
-                                ? (monthlyHours / 160)
-                                .clamp(
-                              0.0,
-                              1.0,
-                            )
+                          _StatCard(
+                            icon: Icons.access_time,
+                            color: const Color(0xFFF28A18),
+                            title: "Ledolgozott órák",
+                            value: _formatHours(monthlyHours),
+                            subtitle: "Ebben a hónapban",
+                            progress: monthlyHours > 0
+                                ? (monthlyHours / 160).clamp(0.0, 1.0)
                                 : 0.0,
                           ),
-                        ),
 
-                        const SizedBox(width: 7),
-
-                        /* ==================================================
-                           AKTÍV PROJEKTEK
-                           ================================================== */
-
-                        Expanded(
-                          child: GestureDetector(
+                          GestureDetector(
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -1470,32 +2106,50 @@ class _StatsGrid extends StatelessWidget {
                                 ),
                               );
                             },
-
                             child: _StatCard(
-                              icon:
-                              Icons.assignment_outlined,
-
-                              color:
-                              const Color(0xFF8543D8),
-
-                              title:
-                              "Aktív projektek",
-
-                              value:
-                              "$activeProjectCount db",
-
-                              subtitle:
-                              "Jelenleg dolgoznak rajta",
-
+                              icon: Icons.assignment_outlined,
+                              color: const Color(0xFF8543D8),
+                              title: "Aktív projektek",
+                              value: "$activeProjectCount db",
+                              subtitle: "Jelenleg dolgoznak rajta",
                               progress:
-                              activeProjectCount > 0
-                                  ? 1.0
-                                  : 0.0,
+                              activeProjectCount > 0 ? 1.0 : 0.0,
                             ),
                           ),
-                        ),
-                      ],
-                    )
+                        ];
+
+                        if (isSmallScreen) {
+                          return GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: cards.length,
+                            gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 7,
+                              mainAxisSpacing: 7,
+                              childAspectRatio: 1.45,
+                            ),
+                            itemBuilder: (context, index) {
+                              return cards[index];
+                            },
+                          );
+                        }
+
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (int i = 0; i < cards.length; i++) ...[
+                              Expanded(
+                                child: cards[i],
+                              ),
+
+                              if (i != cards.length - 1)
+                                const SizedBox(width: 7),
+                            ],
+                          ],
+                        );
+                      },
                     );
                   },
                 );
@@ -2081,7 +2735,7 @@ class _StatCard extends StatelessWidget {
       // Nem használunk fix magasságot.
       // Így Androidon sem tud alul overflowolni.
       constraints: const BoxConstraints(
-        minHeight: 125,
+        minHeight: 110,
       ),
 
       padding: const EdgeInsets.all(9),
@@ -3678,9 +4332,12 @@ class _EmployeeRowFromFirestore
    PROJECTS
    ============================================================ */
 
-class _ProjectsCard
-    extends StatelessWidget {
-  const _ProjectsCard();
+class _ProjectsCard extends StatelessWidget {
+  final void Function(int index) onNavigate;
+
+  const _ProjectsCard({
+    required this.onNavigate,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3826,7 +4483,7 @@ class _ProjectsCard
               const SizedBox(height: 3),
 
               TextButton(
-                onPressed: () {},
+                onPressed: () {onNavigate(3);},
 
                 style:
                 TextButton.styleFrom(
@@ -4169,17 +4826,28 @@ class _SectionCard
    BOTTOM BANNER
    ============================================================ */
 
-class _BottomBanner
-    extends StatelessWidget {
+class _BottomBanner extends StatelessWidget {
   const _BottomBanner();
+
+  Future<void> _openWebsite() async {
+    final Uri url = Uri.parse(
+      'https://www.dina95.hu',
+    );
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 100,
 
-      decoration:
-      BoxDecoration(
+      decoration: BoxDecoration(
         borderRadius:
         BorderRadius.circular(9),
 
@@ -4199,8 +4867,7 @@ class _BottomBanner
         boxShadow: [
           BoxShadow(
             color:
-            Colors.black
-                .withOpacity(.08),
+            Colors.black.withOpacity(.08),
             blurRadius: 8,
           ),
         ],
@@ -4208,6 +4875,7 @@ class _BottomBanner
 
       child: Stack(
         children: [
+
           Positioned(
             right: 20,
             top: 10,
@@ -4215,16 +4883,14 @@ class _BottomBanner
             child: Icon(
               Icons.factory,
               color:
-              Colors.white
-                  .withOpacity(.12),
+              Colors.white.withOpacity(.12),
               size: 80,
             ),
           ),
 
           Padding(
             padding:
-            const EdgeInsets
-                .fromLTRB(
+            const EdgeInsets.fromLTRB(
               16,
               12,
               16,
@@ -4233,34 +4899,30 @@ class _BottomBanner
 
             child: Column(
               crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
+              CrossAxisAlignment.start,
 
               children: [
+
                 const Text(
                   "Profi légtechnikai kivitelezés",
 
-                  style:
-                  TextStyle(
-                    color:
-                    Colors.white,
+                  style: TextStyle(
+                    color: Colors.white,
                     fontSize: 12,
                     fontWeight:
-                    FontWeight
-                        .w800,
+                    FontWeight.w800,
                   ),
                 ),
 
                 const SizedBox(
-                    height: 3),
+                  height: 3,
+                ),
 
                 const Text(
                   "Minőség. Megbízhatóság. Határidőre.",
 
-                  style:
-                  TextStyle(
-                    color:
-                    Colors.white70,
+                  style: TextStyle(
+                    color: Colors.white70,
                     fontSize: 7.5,
                   ),
                 ),
@@ -4270,17 +4932,13 @@ class _BottomBanner
                 SizedBox(
                   height: 25,
 
-                  child:
-                  ElevatedButton(
-                    onPressed: () {},
+                  child: ElevatedButton(
+                    onPressed: _openWebsite,
 
                     style:
-                    ElevatedButton
-                        .styleFrom(
+                    ElevatedButton.styleFrom(
                       backgroundColor:
-                      const Color(
-                        0xFF1478ED,
-                      ),
+                      const Color(0xFF1478ED),
 
                       foregroundColor:
                       Colors.white,
@@ -4288,46 +4946,39 @@ class _BottomBanner
                       elevation: 0,
 
                       padding:
-                      const EdgeInsets
-                          .symmetric(
+                      const EdgeInsets.symmetric(
                         horizontal: 13,
                       ),
 
                       shape:
                       RoundedRectangleBorder(
                         borderRadius:
-                        BorderRadius
-                            .circular(
-                          5,
-                        ),
+                        BorderRadius.circular(5),
                       ),
                     ),
 
-                    child:
-                    const Row(
+                    child: const Row(
                       mainAxisSize:
-                      MainAxisSize
-                          .min,
+                      MainAxisSize.min,
 
                       children: [
-                        Text(
-                          "TOVÁBB A PROJEKTEKHEZ",
 
-                          style:
-                          TextStyle(
+                        Text(
+                          "TOVÁBB A WEBOLDALRA",
+
+                          style: TextStyle(
                             fontSize: 7,
                             fontWeight:
-                            FontWeight
-                                .bold,
+                            FontWeight.bold,
                           ),
                         ),
 
                         SizedBox(
-                            width: 10),
+                          width: 10,
+                        ),
 
                         Icon(
-                          Icons
-                              .arrow_forward,
+                          Icons.open_in_new,
                           size: 12,
                         ),
                       ],
@@ -8615,10 +9266,6 @@ class _SimplePage extends StatelessWidget {
    SZERSZÁMOK
    ============================================================ */
 
-/* ============================================================
-   SZERSZÁMOK
-   ============================================================ */
-
 class ToolsPage extends StatefulWidget {
   const ToolsPage({super.key});
 
@@ -8645,7 +9292,10 @@ class _ToolsPageState
 
     if (result == null) return;
 
-    final String qrCode = result.toString();
+    final String qrCode =
+    result.toString().trim();
+
+    if (qrCode.isEmpty) return;
 
     setState(() {
       scannedCode = qrCode;
@@ -8658,7 +9308,8 @@ class _ToolsPageState
       // BEJELENTKEZETT FELHASZNÁLÓ
       // ============================================================
 
-      final user = FirebaseAuth.instance.currentUser;
+      final user =
+          FirebaseAuth.instance.currentUser;
 
       if (user == null) {
         throw Exception(
@@ -8713,7 +9364,8 @@ class _ToolsPageState
       // SZERSZÁM
       // ============================================================
 
-      final toolDoc = snapshot.docs.first;
+      final toolDoc =
+          snapshot.docs.first;
 
       // ============================================================
       // AKTUÁLIS DÁTUM ÉS IDŐ
@@ -8733,13 +9385,20 @@ class _ToolsPageState
       // ============================================================
 
       if (userName == "Varga Dávid") {
-        // Varga Dávid a szerszámot visszateszi a raktárba
+
+        // Varga Dávid a szerszámot
+        // visszateszi a raktárba
+
         await toolDoc.reference.update({
           "Használó": "",
           "kivette": "",
         });
+
       } else {
-        // Normál dolgozó kiveszi a szerszámot
+
+        // Normál dolgozó kiveszi
+        // a szerszámot
+
         await toolDoc.reference.update({
           "Használó": userName,
           "kivette": formattedDateTime,
@@ -8753,6 +9412,8 @@ class _ToolsPageState
       final updatedSnapshot =
       await toolDoc.reference.get();
 
+      if (!mounted) return;
+
       setState(() {
         toolData =
             updatedSnapshot.data();
@@ -8764,12 +9425,12 @@ class _ToolsPageState
       // SIKERES ÜZENET
       // ============================================================
 
-      if (!mounted) return;
-
       ScaffoldMessenger.of(context)
           .showSnackBar(
         SnackBar(
-          backgroundColor: Colors.green,
+          backgroundColor:
+          Colors.green,
+
           content: Text(
             userName == "Varga Dávid"
                 ? "A szerszám visszakerült a raktárba."
@@ -8777,17 +9438,21 @@ class _ToolsPageState
           ),
         ),
       );
+
     } catch (e) {
+
+      if (!mounted) return;
+
       setState(() {
         isLoading = false;
       });
 
-      if (!mounted) return;
-
       ScaffoldMessenger.of(context)
           .showSnackBar(
         SnackBar(
-          backgroundColor: Colors.red,
+          backgroundColor:
+          Colors.red,
+
           content: Text(
             "Hiba a szerszám kiadásakor: $e",
           ),
@@ -8798,6 +9463,7 @@ class _ToolsPageState
 
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
       backgroundColor:
       const Color(0xFFF5F7FA),
@@ -8817,6 +9483,7 @@ class _ToolsPageState
             context,
             snapshot,
             ) {
+
           if (snapshot.hasError) {
             return const Center(
               child: Text(
@@ -8827,6 +9494,7 @@ class _ToolsPageState
 
           if (snapshot.connectionState ==
               ConnectionState.waiting) {
+
             return const Center(
               child:
               CircularProgressIndicator(),
@@ -8836,10 +9504,13 @@ class _ToolsPageState
           final tools =
               snapshot.data?.docs ?? [];
 
-          // Csak azok a szerszámok,
-          // amelyek jelenleg valakinél vannak.
+          // ============================================================
+          // KIADOTT SZERSZÁMOK
+          // ============================================================
+
           final issuedTools =
           tools.where((doc) {
+
             final data =
             doc.data()
             as Map<String, dynamic>;
@@ -8852,6 +9523,29 @@ class _ToolsPageState
                     .toString()
                     .trim()
                     .isNotEmpty;
+
+          }).toList();
+
+          // ============================================================
+          // RAKTÁRON LÉVŐ SZERSZÁMOK
+          // ============================================================
+
+          final warehouseTools =
+          tools.where((doc) {
+
+            final data =
+            doc.data()
+            as Map<String, dynamic>;
+
+            final user =
+            data["Használó"];
+
+            return user == null ||
+                user
+                    .toString()
+                    .trim()
+                    .isEmpty;
+
           }).toList();
 
           return ListView(
@@ -8860,7 +9554,9 @@ class _ToolsPageState
 
             children: [
 
-              const SizedBox(height: 20),
+              const SizedBox(
+                height: 20,
+              ),
 
               /* ==================================================
                  QR KÓD BEOLVASÁSA
@@ -8871,7 +9567,9 @@ class _ToolsPageState
 
                 child:
                 ElevatedButton.icon(
-                  onPressed: isLoading
+
+                  onPressed:
+                  isLoading
                       ? null
                       : scanQRCode,
 
@@ -8890,7 +9588,10 @@ class _ToolsPageState
                  ================================================== */
 
               if (isLoading) ...[
-                const SizedBox(height: 30),
+
+                const SizedBox(
+                  height: 30,
+                ),
 
                 const Center(
                   child:
@@ -8905,7 +9606,10 @@ class _ToolsPageState
               if (!isLoading &&
                   scannedCode != null &&
                   toolData == null) ...[
-                const SizedBox(height: 30),
+
+                const SizedBox(
+                  height: 30,
+                ),
 
                 const Card(
                   child: Padding(
@@ -8916,13 +9620,14 @@ class _ToolsPageState
                       children: [
 
                         Icon(
-                          Icons
-                              .error_outline,
+                          Icons.error_outline,
                           size: 45,
                           color: Colors.red,
                         ),
 
-                        SizedBox(height: 10),
+                        SizedBox(
+                          height: 10,
+                        ),
 
                         Text(
                           "Nincs ilyen szerszám az adatbázisban.",
@@ -8947,16 +9652,23 @@ class _ToolsPageState
 
               if (!isLoading &&
                   toolData != null) ...[
-                const SizedBox(height: 30),
+
+                const SizedBox(
+                  height: 30,
+                ),
 
                 _ToolInfoCard(
-                  toolData: toolData!,
+                  toolData:
+                  toolData!,
+
                   scannedCode:
                   scannedCode!,
                 ),
               ],
 
-              const SizedBox(height: 30),
+              const SizedBox(
+                height: 30,
+              ),
 
               /* ==================================================
                  KIADOTT SZERSZÁMOK CÍM
@@ -8970,10 +9682,13 @@ class _ToolsPageState
                     size: 24,
                   ),
 
-                  SizedBox(width: 10),
+                  SizedBox(
+                    width: 10,
+                  ),
 
                   Text(
                     "Kiadott szerszámok",
+
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight:
@@ -8983,13 +9698,16 @@ class _ToolsPageState
                 ],
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(
+                height: 12,
+              ),
 
               /* ==================================================
                  NINCS KIADOTT SZERSZÁM
                  ================================================== */
 
               if (issuedTools.isEmpty)
+
                 const Card(
                   child: Padding(
                     padding:
@@ -9008,6 +9726,7 @@ class _ToolsPageState
                  ================================================== */
 
               ...issuedTools.map((doc) {
+
                 final data =
                 doc.data()
                 as Map<String, dynamic>;
@@ -9032,7 +9751,9 @@ class _ToolsPageState
                   ),
 
                   child: ListTile(
-                    leading: const CircleAvatar(
+
+                    leading:
+                    const CircleAvatar(
                       child: Icon(
                         Icons.build,
                       ),
@@ -9068,6 +9789,104 @@ class _ToolsPageState
                           "Kivette: $takenAt",
                         ),
                       ],
+                    ),
+                  ),
+                );
+              }),
+
+              const SizedBox(
+                height: 30,
+              ),
+
+              /* ==================================================
+                 RAKTÁRON LÉVŐ SZERSZÁMOK CÍM
+                 ================================================== */
+
+              const Row(
+                children: [
+
+                  Icon(
+                    Icons.warehouse_outlined,
+                    size: 24,
+                  ),
+
+                  SizedBox(
+                    width: 10,
+                  ),
+
+                  Text(
+                    "Raktáron lévő szerszámok",
+
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight:
+                      FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(
+                height: 12,
+              ),
+
+              /* ==================================================
+                 NINCS RAKTÁRON LÉVŐ SZERSZÁM
+                 ================================================== */
+
+              if (warehouseTools.isEmpty)
+
+                const Card(
+                  child: Padding(
+                    padding:
+                    EdgeInsets.all(20),
+
+                    child: Text(
+                      "Nincs raktáron lévő szerszám.",
+                      textAlign:
+                      TextAlign.center,
+                    ),
+                  ),
+                ),
+
+              /* ==================================================
+                 RAKTÁRON LÉVŐ SZERSZÁMOK LISTÁJA
+                 ================================================== */
+
+              ...warehouseTools.map((doc) {
+
+                final String toolName =
+                    doc.id;
+
+                return Card(
+                  margin:
+                  const EdgeInsets.only(
+                    bottom: 10,
+                  ),
+
+                  child: ListTile(
+
+                    leading:
+                    const CircleAvatar(
+                      child: Icon(
+                        Icons.build,
+                      ),
+                    ),
+
+                    title: Text(
+                      toolName,
+
+                      style:
+                      const TextStyle(
+                        fontWeight:
+                        FontWeight.w600,
+                      ),
+                    ),
+
+                    trailing:
+                    const Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
                     ),
                   ),
                 );
@@ -9121,7 +9940,9 @@ class _ToolInfoCard
                   size: 28,
                 ),
 
-                SizedBox(width: 10),
+                SizedBox(
+                  width: 10,
+                ),
 
                 Text(
                   "Szerszám adatai",
@@ -9135,10 +9956,13 @@ class _ToolInfoCard
               ],
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(
+              height: 20,
+            ),
 
             _ToolDataRow(
               label: "Használó",
+
               value:
               toolData["Használó"]
                   ?.toString() ??
@@ -9147,6 +9971,7 @@ class _ToolInfoCard
 
             _ToolDataRow(
               label: "Kivette",
+
               value:
               toolData["kivette"]
                   ?.toString() ??
@@ -9197,7 +10022,8 @@ class _ToolDataRow
             child: Text(
               "$label:",
 
-              style: const TextStyle(
+              style:
+              const TextStyle(
                 fontWeight:
                 FontWeight.w600,
               ),
@@ -9215,6 +10041,7 @@ class _ToolDataRow
   }
 }
 
+
 /* ============================================================
    QR-KÓD OLVASÓ
    ============================================================ */
@@ -9230,10 +10057,56 @@ class QRScannerPage extends StatefulWidget {
 class _QRScannerPageState
     extends State<QRScannerPage> {
 
+  late final MobileScannerController controller;
+
   bool alreadyScanned = false;
 
   @override
+  void initState() {
+    super.initState();
+
+    controller = MobileScannerController(
+      autoStart: true,
+    );
+  }
+
+  /* ============================================================
+     QR KÓD ÉSZLELÉSE
+     ============================================================ */
+
+  Future<void> _qrCodeDetected(String code) async {
+
+    if (alreadyScanned) return;
+
+    alreadyScanned = true;
+
+    // ============================================================
+    // KAMERA LEÁLLÍTÁSA
+    // ============================================================
+
+    try {
+      await controller.stop();
+    } catch (_) {}
+
+    // ============================================================
+    // QR KÓD VISSZAADÁSA
+    // ============================================================
+
+    if (!mounted) return;
+
+    Navigator.pop(
+      context,
+      code,
+    );
+  }
+
+  /* ============================================================
+     BUILD
+     ============================================================ */
+
+  @override
   Widget build(BuildContext context) {
+
     return Scaffold(
       backgroundColor: Colors.black,
 
@@ -9247,25 +10120,21 @@ class _QRScannerPageState
       ),
 
       body: MobileScanner(
+        controller: controller,
+
         onDetect: (capture) {
+
           if (alreadyScanned) return;
 
-          final List<Barcode> barcodes =
-              capture.barcodes;
+          for (final barcode in capture.barcodes) {
 
-          for (final barcode in barcodes) {
             final String? code =
                 barcode.rawValue;
 
             if (code != null &&
                 code.isNotEmpty) {
 
-              alreadyScanned = true;
-
-              Navigator.pop(
-                context,
-                code,
-              );
+              _qrCodeDetected(code);
 
               break;
             }
@@ -9274,7 +10143,21 @@ class _QRScannerPageState
       ),
     );
   }
+
+  /* ============================================================
+     DISPOSE
+     ============================================================ */
+
+  @override
+  void dispose() {
+    controller.dispose();
+
+    MobileScannerController.resetPlatformSessionOwner();
+
+    super.dispose();
+  }
 }
+
 
 /* ============================================================
    ADMIN PAGE
@@ -9291,7 +10174,8 @@ class AdminPage extends StatefulWidget {
 class _AdminPageState
     extends State<AdminPage> {
 
-  final TextEditingController toolNameController =
+  final TextEditingController
+  toolNameController =
   TextEditingController();
 
   String? scannedQRCode;
@@ -9420,7 +10304,9 @@ class _AdminPageState
         ScaffoldMessenger.of(context)
             .showSnackBar(
           const SnackBar(
-            backgroundColor: Colors.orange,
+            backgroundColor:
+            Colors.orange,
+
             content: Text(
               "Ez a QR-kód már hozzá van rendelve egy szerszámhoz!",
             ),
@@ -9451,7 +10337,9 @@ class _AdminPageState
         ScaffoldMessenger.of(context)
             .showSnackBar(
           const SnackBar(
-            backgroundColor: Colors.orange,
+            backgroundColor:
+            Colors.orange,
+
             content: Text(
               "Már létezik ilyen nevű szerszám!",
             ),
@@ -9467,12 +10355,14 @@ class _AdminPageState
 
       await toolDocument.set({
 
-        "QR code": qrCode,
+        "QR code":
+        qrCode,
 
-        "Használó": "",
+        "Használó":
+        "",
 
-        "kivette": "",
-
+        "kivette":
+        "",
       });
 
       /* ========================================================
@@ -9483,10 +10373,11 @@ class _AdminPageState
 
       setState(() {
 
-        scannedQRCode = null;
+        scannedQRCode =
+        null;
 
-        isSaving = false;
-
+        isSaving =
+        false;
       });
 
       if (!mounted) return;
@@ -9498,7 +10389,8 @@ class _AdminPageState
       ScaffoldMessenger.of(context)
           .showSnackBar(
         SnackBar(
-          backgroundColor: Colors.green,
+          backgroundColor:
+          Colors.green,
 
           content: Text(
             "A(z) $toolName szerszám sikeresen hozzáadva!",
@@ -9517,7 +10409,8 @@ class _AdminPageState
       ScaffoldMessenger.of(context)
           .showSnackBar(
         SnackBar(
-          backgroundColor: Colors.red,
+          backgroundColor:
+          Colors.red,
 
           content: Text(
             "Hiba a szerszám mentésekor: $e",
