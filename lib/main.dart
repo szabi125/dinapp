@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart' as excel2;
 import 'package:file_saver/file_saver.dart';
@@ -8,7 +7,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
 import 'login_screen.dart';
@@ -16,6 +14,10 @@ import 'dart:async';
 
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+
+import 'package:flutter/foundation.dart';
+import 'package:web/web.dart' as web;
+import 'dart:js_interop';
 
 
 
@@ -45,6 +47,10 @@ Future<void> main() async {
 
     print("Cím: ${message.notification?.title}");
     print("Szöveg: ${message.notification?.body}");
+
+    if (kIsWeb) {
+      print("🌐 Webes előtérben lévő alkalmazás.");
+    }
   });
 
   runApp(const DinaApp());
@@ -6809,7 +6815,20 @@ class _CalendarPageState extends State<CalendarPage> {
       // MINDEN MENTÉSE
       // --------------------------------------------------------
 
-      await batch.commit();
+      try {
+        print('🏖️ BATCH COMMIT INDUL');
+        print('🏖️ Értesítés neve: $userName');
+        print('🏖️ Értesítés dátumai: $selectedDates');
+
+        await batch.commit();
+
+        print('✅ BATCH COMMIT SIKERES');
+        print('✅ holidayNotifications dokumentum létrehozva');
+      } catch (e) {
+        print('❌❌❌ BATCH COMMIT HIBA ❌❌❌');
+        print(e);
+        rethrow;
+      }
 
       if (!mounted) return;
 

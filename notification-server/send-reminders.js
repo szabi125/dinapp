@@ -12,23 +12,76 @@ const db = getFirestore();
 const messaging = getMessaging();
 
 async function main() {
-  // Magyarországi mai dátum
-  const formatter = new Intl.DateTimeFormat("en-CA", {
+  // =====================================================
+  // MAGYAR IDŐ
+  // =====================================================
+
+  const now = new Date();
+
+  const timeFormatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Budapest",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const dateFormatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Budapest",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   });
 
-  const today = formatter.format(new Date());
+  const currentTime = timeFormatter.format(now);
+  const today = dateFormatter.format(now);
 
   console.log(`📅 Mai dátum: ${today}`);
+  console.log(`🕐 Magyar idő: ${currentTime}`);
+
+  // =====================================================
+  // IDŐKORLÁT
+  // =====================================================
+
+  const [hour, minute] = currentTime.split(":").map(Number);
+
+  const currentMinutes = hour * 60 + minute;
+
+   const startMinutes = 6 * 60 + 45; // 06:45
+   const endMinutes = 16 * 60;       // 16:00
+
+  // 06:45 előtt
+  if (currentMinutes < startMinutes) {
+    console.log(
+      "🌙 Még nincs 06:45 → nincs értesítés."
+    );
+    return;
+  }
+
+  // 16:00 után
+  if (currentMinutes >= endMinutes) {
+    console.log(
+      "🌙 16:00 után vagyunk → nincs értesítés."
+    );
+    return;
+  }
+
+  console.log(
+    "✅ Az emlékeztetési időszak aktív."
+  );
+
+  // =====================================================
+  // FELHASZNÁLÓK
+  // =====================================================
 
   const usersSnapshot = await db.collection("users").get();
 
   console.log(
     `👥 Felhasználók száma: ${usersSnapshot.size}`
   );
+
+  // =====================================================
+  // FELHASZNÁLÓK ELLENŐRZÉSE
+  // =====================================================
 
   for (const userDoc of usersSnapshot.docs) {
     const uid = userDoc.id;
@@ -37,13 +90,21 @@ async function main() {
     const name = userData.name || "Dolgozó";
     const token = userData.fcmToken;
 
-    // Nincs token
+    // ===================================================
+    // NINCS TOKEN
+    // ===================================================
+
     if (!token) {
-      console.log(`⚠️ ${name}: nincs fcmToken`);
+      console.log(
+        `⚠️ ${name}: nincs fcmToken`
+      );
       continue;
     }
 
-    // Mai check-in
+    // ===================================================
+    // MAI CHECK-IN
+    // ===================================================
+
     const checkinRef = db
       .collection("users")
       .doc(uid)
@@ -52,11 +113,20 @@ async function main() {
 
     const checkinSnapshot = await checkinRef.get();
 
-    // Már becsekkolt
+    // ===================================================
+    // MÁR BECSKKEKOLT
+    // ===================================================
+
     if (checkinSnapshot.exists) {
-      console.log(`✅ ${name}: már becsekkolt`);
+      console.log(
+        `✅ ${name}: már becsekkolt`
+      );
       continue;
     }
+
+    // ===================================================
+    // NINCS BECSKKEKOLVA → ÉRTESÍTÉS
+    // ===================================================
 
     console.log(
       `🔔 ${name}: nincs becsekkolva → értesítés`
@@ -65,9 +135,9 @@ async function main() {
     const message = {
       token: token,
 
-      // =====================================================
+      // =================================================
       // ALAP ÉRTESÍTÉS
-      // =====================================================
+      // =================================================
 
       notification: {
         title: "🔔 DINA95 Jelenléti Rendszer",
@@ -75,9 +145,9 @@ async function main() {
           "Még nem csekkoltál be! Kérlek, rögzítsd a jelenléted.",
       },
 
-      // =====================================================
+      // =================================================
       // WEB
-      // =====================================================
+      // =================================================
 
       webpush: {
         notification: {
@@ -103,9 +173,9 @@ async function main() {
         },
       },
 
-      // =====================================================
+      // =================================================
       // ANDROID
-      // =====================================================
+      // =================================================
 
       android: {
         priority: "high",
@@ -119,9 +189,9 @@ async function main() {
         },
       },
 
-      // =====================================================
+      // =================================================
       // SAJÁT ADATOK
-      // =====================================================
+      // =================================================
 
       data: {
         type: "attendance_reminder",
@@ -129,6 +199,10 @@ async function main() {
         url: "/",
       },
     };
+
+    // ===================================================
+    // ÉRTESÍTÉS KÜLDÉSE
+    // ===================================================
 
     try {
       const response = await messaging.send(message);
@@ -143,7 +217,10 @@ async function main() {
         error.code || error
       );
 
-      // Érvénytelen token esetén töröljük
+      // =================================================
+      // ÉRVÉNYTELEN TOKEN
+      // =================================================
+
       if (
         error.code ===
           "messaging/registration-token-not-registered" ||

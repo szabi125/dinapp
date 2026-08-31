@@ -2,8 +2,14 @@ name: DINA95 FCM jelenléti emlékeztető
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/5 6-15 * * *"
+      timezone: "Europe/Budapest"
+
   workflow_dispatch:
+
+concurrency:
+  group: dina95-attendance-reminders
+  cancel-in-progress: false
 
 jobs:
   send-reminders:
@@ -27,13 +33,7 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          node -e "
-          const fs = require('fs');
-          fs.writeFileSync(
-            'serviceAccountKey.json',
-            process.env.FIREBASE_SERVICE_ACCOUNT
-          );
-          "
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > serviceAccountKey.json
 
           node send-reminders.js
 
