@@ -41,6 +41,25 @@
 
 <body>
 
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register(
+        'firebase-messaging-sw.js'
+      ).then(function (registration) {
+        console.log(
+          'Firebase Messaging Service Worker regisztrálva:',
+          registration.scope
+        );
+      }).catch(function (error) {
+        console.error(
+          'Firebase Messaging Service Worker hiba:',
+          error
+        );
+      });
+    });
+  }
+</script>
 
 <script src="flutter_bootstrap.js" async></script>
 
