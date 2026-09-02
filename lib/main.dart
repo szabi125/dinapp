@@ -31,11 +31,11 @@ Future<void> main() async {
   // FIREBASE CLOUD MESSAGING
   // ============================================================
 
-  await FirebaseMessaging.instance.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
+  //await FirebaseMessaging.instance.requestPermission(
+    //alert: true,
+    //badge: true,
+    //sound: true,
+  //);
 
   // ============================================================
   // FCM - ELŐTÉRBEN ÉRKEZŐ ÜZENETEK
