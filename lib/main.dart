@@ -167,7 +167,18 @@ class AuthGate extends StatelessWidget {
             print("❌ Felhasználó mentési hiba: $error");
           });
 
-          return const HomeScreen();
+          return const Scaffold(
+            backgroundColor: Colors.green,
+            body: Center(
+              child: Text(
+                'BELÉPÉS SIKERES',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 30,
+                ),
+              ),
+            ),
+          );
         }
 
         return const LoginScreen();
