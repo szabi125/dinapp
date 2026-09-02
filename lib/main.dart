@@ -158,15 +158,6 @@ class AuthGate extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
-          // ============================================================
-          // FELHASZNÁLÓ MENTÉSE HÁTTÉRBEN
-          // NEM VÁRUNK RÁ AZ APP MEGJELENÉSÉHEZ
-          // ============================================================
-
-          saveUserToFirestore(snapshot.data!).catchError((error) {
-            print("❌ Felhasználó mentési hiba: $error");
-          });
-
           return const Scaffold(
             backgroundColor: Colors.green,
             body: Center(
