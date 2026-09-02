@@ -57,7 +57,8 @@ Future<void> saveUserToFirestore(User user) async {
   }
 
   // ============================================================
-  // FCM TOKEN LEKÉRÉSE
+  // FCM
+  // AZ ÉRTESÍTÉSEK HIBÁJA NEM AKASZTHATJA MEG AZ APPOT
   // ============================================================
 
   try {
@@ -157,56 +158,16 @@ class AuthGate extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
-          return FutureBuilder(
-            future: saveUserToFirestore(
-              snapshot.data!,
-            ),
+          // ============================================================
+          // FELHASZNÁLÓ MENTÉSE HÁTTÉRBEN
+          // NEM VÁRUNK RÁ AZ APP MEGJELENÉSÉHEZ
+          // ============================================================
 
-            builder: (
-                context,
-                userSnapshot,
-                ) {
-              if (userSnapshot.connectionState ==
-                  ConnectionState.waiting) {
-                return const Scaffold(
-                  backgroundColor: Color(0xFF101E2E),
-                  body: Center(
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                    ),
-                  ),
-                );
-              }
+          saveUserToFirestore(snapshot.data!).catchError((error) {
+            print("❌ Felhasználó mentési hiba: $error");
+          });
 
-              if (userSnapshot.hasError) {
-                return Scaffold(
-                  backgroundColor:
-                  const Color(0xFF101E2E),
-
-                  body: Center(
-                    child: Padding(
-                      padding:
-                      const EdgeInsets.all(20),
-
-                      child: Text(
-                        "Hiba a felhasználó mentésekor:\n\n"
-                            "${userSnapshot.error}",
-
-                        textAlign:
-                        TextAlign.center,
-
-                        style: const TextStyle(
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }
-
-              return const HomeScreen();
-            },
-          );
+          return const HomeScreen();
         }
 
         return const LoginScreen();
