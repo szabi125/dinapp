@@ -145,13 +145,23 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
 
       builder: (context, snapshot) {
+        print("AUTH STATE:");
+        print("connectionState: ${snapshot.connectionState}");
+        print("hasData: ${snapshot.hasData}");
+        print("data: ${snapshot.data}");
+        print("error: ${snapshot.error}");
+
         if (snapshot.connectionState ==
             ConnectionState.waiting) {
           return const Scaffold(
-            backgroundColor: Color(0xFF101E2E),
+            backgroundColor: Colors.orange,
             body: Center(
-              child: CircularProgressIndicator(
-                color: Colors.white,
+              child: Text(
+                "AUTH BETÖLTÉS...",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 30,
+                ),
               ),
             ),
           );
@@ -162,7 +172,7 @@ class AuthGate extends StatelessWidget {
             backgroundColor: Colors.green,
             body: Center(
               child: Text(
-                'BELÉPÉS SIKERES',
+                "BELÉPÉS SIKERES",
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 30,
