@@ -25,36 +25,23 @@ import 'dart:js_interop';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.red,
+        body: Center(
+          child: Text(
+            'DINA95 TESZT',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 30,
+            ),
+          ),
+        ),
+      ),
+    ),
   );
-
-  // ============================================================
-  // FIREBASE CLOUD MESSAGING
-  // ============================================================
-
-  await FirebaseMessaging.instance.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
-
-  // ============================================================
-  // FCM - ELŐTÉRBEN ÉRKEZŐ ÜZENETEK
-  // ============================================================
-
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    print("FCM üzenet érkezett!");
-
-    print("Cím: ${message.notification?.title}");
-    print("Szöveg: ${message.notification?.body}");
-
-    if (kIsWeb) {
-      print("🌐 Webes előtérben lévő alkalmazás.");
-    }
-  });
-
-  runApp(const DinaApp());
 }
 
 /* ============================================================
