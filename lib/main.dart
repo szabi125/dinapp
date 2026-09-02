@@ -29,6 +29,31 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  // ============================================================
+  // FIREBASE CLOUD MESSAGING
+  // ============================================================
+
+  await FirebaseMessaging.instance.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
+  // ============================================================
+  // FCM - ELŐTÉRBEN ÉRKEZŐ ÜZENETEK
+  // ============================================================
+
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    print("FCM üzenet érkezett!");
+
+    print("Cím: ${message.notification?.title}");
+    print("Szöveg: ${message.notification?.body}");
+
+    if (kIsWeb) {
+      print("🌐 Webes előtérben lévő alkalmazás.");
+    }
+  });
+
   runApp(const DinaApp());
 }
 
@@ -57,8 +82,7 @@ Future<void> saveUserToFirestore(User user) async {
   }
 
   // ============================================================
-  // FCM
-  // AZ ÉRTESÍTÉSEK HIBÁJA NEM AKASZTHATJA MEG AZ APPOT
+  // FCM TOKEN LEKÉRÉSE
   // ============================================================
 
   try {
@@ -145,40 +169,68 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
 
       builder: (context, snapshot) {
-        print("AUTH STATE:");
-        print("connectionState: ${snapshot.connectionState}");
-        print("hasData: ${snapshot.hasData}");
-        print("data: ${snapshot.data}");
-        print("error: ${snapshot.error}");
-
         if (snapshot.connectionState ==
             ConnectionState.waiting) {
           return const Scaffold(
-            backgroundColor: Colors.orange,
+            backgroundColor: Color(0xFF101E2E),
             body: Center(
-              child: Text(
-                "AUTH BETÖLTÉS...",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 30,
-                ),
+              child: CircularProgressIndicator(
+                color: Colors.white,
               ),
             ),
           );
         }
 
         if (snapshot.hasData) {
-          return const Scaffold(
-            backgroundColor: Colors.green,
-            body: Center(
-              child: Text(
-                "BELÉPÉS SIKERES",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 30,
-                ),
-              ),
+          return FutureBuilder(
+            future: saveUserToFirestore(
+              snapshot.data!,
             ),
+
+            builder: (
+                context,
+                userSnapshot,
+                ) {
+              if (userSnapshot.connectionState ==
+                  ConnectionState.waiting) {
+                return const Scaffold(
+                  backgroundColor: Color(0xFF101E2E),
+                  body: Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                    ),
+                  ),
+                );
+              }
+
+              if (userSnapshot.hasError) {
+                return Scaffold(
+                  backgroundColor:
+                  const Color(0xFF101E2E),
+
+                  body: Center(
+                    child: Padding(
+                      padding:
+                      const EdgeInsets.all(20),
+
+                      child: Text(
+                        "Hiba a felhasználó mentésekor:\n\n"
+                            "${userSnapshot.error}",
+
+                        textAlign:
+                        TextAlign.center,
+
+                        style: const TextStyle(
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              return const HomeScreen();
+            },
           );
         }
 
