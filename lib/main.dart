@@ -17,8 +17,6 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'package:flutter/foundation.dart';
-import 'package:web/web.dart' as web;
-import 'dart:js_interop';
 
 
 
